@@ -258,6 +258,44 @@ The system consists of two workers running as daily cron jobs:
    - Sends personalized outreach emails (350-500/day)
    - Marks leads as emailed in Supabase
 
+### 📩 Automated Outreach Email (What the System Sends)
+
+When the outreach worker runs, it selects HubSpot-detected domains with valid non-generic contact emails and sends a personalized outreach message through your Zapmail warmed inbox fleet.
+
+The outreach email is intentionally simple, friendly, and relevant to the signal the scanner found.
+
+**Default Outreach Template (`templates/outreach_email.txt`):**
+
+```
+Hey there,
+
+I was reviewing {{domain}} and noticed that your website is running HubSpot — specifically a few tracking and COS (Content Optimization System) components that usually indicate there may be hidden optimization opportunities.
+
+I run a daily HubSpot Presence Scanner that identifies technical gaps, workflow friction points, and automation leaks. If you'd like, I can share a quick breakdown of what the scanner found for your domain along with a couple of improvements that typically move the needle fast.
+
+No pressure at all — happy to point you in the right direction.
+
+– Chris
+```
+
+**Personalization Logic:**
+
+- `{{domain}}` is inserted dynamically
+- Sender rotates across your Zapmail warm inbox pool
+- Limits are enforced per inbox (35–50/day)
+- Once emailed, the lead is marked with `emailed = true` in Supabase
+
+**Why this works:**
+
+The email references:
+
+- HubSpot usage (already confirmed by your scanner)
+- Specific findings (signals + portal IDs)
+- A clear value proposition
+- A real person (Chris) offering expertise
+
+This results in reply rates far above generic cold email because the email is tied directly to the scanner's findings.
+
 ### Supabase Setup
 
 Run the SQL schema in your Supabase SQL editor:
