@@ -1,0 +1,63 @@
+services:
+  - type: worker
+    name: hubspot-domain-pipeline-worker
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        value: https://dlcjgctfijlnolktfmfg.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_TABLE
+        value: hubspot_scans
+      - key: SUPABASE_DOMAIN_TABLE
+        value: domains_seen
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_ACTOR
+        value: compass/crawler-google-places
+      - key: SCANNER_MAX_EMAIL_PAGES
+        value: "10"
+      - key: SCANNER_DISABLE_EMAILS
+        value: "false"
+      - key: CATEGORIES_FILE
+        value: config/categories-250.json
+
+  - type: worker
+    name: outreach-worker
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        value: https://dlcjgctfijlnolktfmfg.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: OUTREACH_TABLE
+        value: hubspot_scans
+      - key: SMTP_ACCOUNTS_JSON
+        sync: false
+      - key: OUTREACH_DAILY_LIMIT
+        value: "500"
+      - key: OUTREACH_PER_INBOX_LIMIT
+        value: "50"
+      - key: OUTREACH_SUBJECT
+        value: "Quick question about your website"
+      - key: OUTREACH_EMAIL_TEMPLATE
+        value: templates/outreach_email.txt
+      - key: SMTP_SEND_DELAY_SECONDS
+        value: "4"
+
+cronJobs:
+  - name: daily-hubspot-domain-scan
+    schedule: "0 6 * * *"
+    service: hubspot-domain-pipeline-worker
+    command: "python pipeline_worker.py"
+
+  - name: daily-outreach-send
+    schedule: "0 14 * * *"
+    service: outreach-worker
+    command: "python outreach_worker.py"

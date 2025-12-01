@@ -230,6 +230,91 @@ To enable email sending, create a `zapmail_config.json` file (see `zapmail_confi
 - **RevOps Workflows**: Automate HubSpot user identification
 - **Automated Outreach**: Daily pipeline for discovering and contacting prospects
 
+## Render Deployment
+
+This repository includes a complete Render deployment kit for running a fully automated daily pipeline.
+
+### Architecture
+
+The system consists of two workers running as daily cron jobs:
+
+1. **Pipeline Worker** (`pipeline_worker.py`) - Runs at 6:00 AM UTC
+   - Scrapes Google Places for one business category (rotates through 250 categories)
+   - Extracts and normalizes domains
+   - Deduplicates against Supabase history
+   - Scans each domain for HubSpot presence
+   - Extracts non-generic contact emails
+   - Stores results in Supabase
+
+2. **Outreach Worker** (`outreach_worker.py`) - Runs at 2:00 PM UTC
+   - Pulls HubSpot-detected leads with emails
+   - Rotates through Zapmail pre-warmed SMTP inboxes
+   - Sends personalized outreach emails (350-500/day)
+   - Marks leads as emailed in Supabase
+
+### Supabase Setup
+
+Run the SQL schema in your Supabase SQL editor:
+
+```sql
+-- See config/supabase_schema.sql for full schema
+create table hubspot_scans (
+    id uuid primary key default gen_random_uuid(),
+    domain text not null,
+    hubspot_detected boolean default false,
+    confidence_score float default 0,
+    portal_ids jsonb default '[]'::jsonb,
+    hubspot_signals jsonb default '[]'::jsonb,
+    emails jsonb default '[]'::jsonb,
+    category text,
+    created_at timestamptz default now(),
+    error text,
+    emailed boolean,
+    emailed_at timestamptz
+);
+
+create table domains_seen (
+    domain text primary key,
+    category text,
+    first_seen timestamptz default now()
+);
+```
+
+### Environment Variables
+
+Set these in the Render dashboard:
+
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key (secret) |
+| `APIFY_TOKEN` | Apify API token (secret) |
+| `SMTP_ACCOUNTS_JSON` | JSON array of SMTP inbox configs (secret) |
+
+### Deploy to Render
+
+1. Fork this repository
+2. Connect to Render
+3. Import `render.yaml` (Infrastructure as Code)
+4. Set secret environment variables in Render dashboard
+5. Deploy!
+
+### Local Development
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your credentials
+nano .env
+
+# Run pipeline worker
+python pipeline_worker.py
+
+# Run outreach worker
+python outreach_worker.py
+```
+
 ## Requirements
 
 - Python 3.10+
@@ -237,6 +322,8 @@ To enable email sending, create a `zapmail_config.json` file (see `zapmail_confi
 - beautifulsoup4
 - lxml
 - apify-client (for Google Places scraping)
+- supabase (for data persistence)
+- python-dotenv (for local development)
 
 ## License
 

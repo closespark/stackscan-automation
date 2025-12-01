@@ -494,22 +494,31 @@ def deduplicate_places(
     """
     new_places = []
     new_domains = []
+    no_website_count = 0
+    duplicate_count = 0
 
     for place in places:
         website = place.get("website", "")
         if not website:
+            no_website_count += 1
             continue
 
         domain = normalize_domain(website)
         if not domain:
+            no_website_count += 1
             continue
 
-        if domain not in processed_domains:
+        if domain in processed_domains:
+            duplicate_count += 1
+        else:
             new_places.append(place)
             new_domains.append(domain)
             processed_domains.add(domain)
 
-    print(f"Found {len(new_places)} new domains (filtered {len(places) - len(new_places)} duplicates)")
+    print(
+        f"Found {len(new_places)} new domains "
+        f"(skipped {no_website_count} without website, {duplicate_count} duplicates)"
+    )
     return new_places, new_domains
 
 
