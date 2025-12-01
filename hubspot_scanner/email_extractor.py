@@ -62,7 +62,12 @@ def is_disposable_email(email: str) -> bool:
     Returns:
         True if the email is from a disposable domain, False otherwise
     """
-    email_domain = email.lower().split("@")[1] if "@" in email else ""
+    if "@" not in email:
+        return False
+    parts = email.lower().split("@")
+    if len(parts) != 2 or not parts[1]:
+        return False
+    email_domain = parts[1]
     disposable_domains = load_disposable_domains()
     return email_domain in disposable_domains
 
