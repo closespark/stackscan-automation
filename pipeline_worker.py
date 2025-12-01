@@ -277,7 +277,7 @@ def get_domains_from_category(apify_client: ApifyClient, category: str) -> list[
                 f"Apify run timed out after {APIFY_RUN_TIMEOUT} seconds"
             )
 
-        # Wait for the next poll interval (with a max of 60 seconds for API limit)
+        # Wait for the next poll interval (capped at 60s to ensure timely status updates)
         wait_time = min(APIFY_POLL_INTERVAL, 60)
         run_info = apify_client.run(run_id).wait_for_finish(wait_secs=wait_time)
         poll_count += 1

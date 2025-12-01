@@ -403,7 +403,7 @@ def run_category(
                 print(f"  Warning: Failed to abort run: {e}")
             raise RuntimeError(f"Apify run timed out after {run_timeout} seconds")
 
-        # Wait for the next poll interval (with a max of 60 seconds for API limit)
+        # Wait for the next poll interval (capped at 60s to ensure timely status updates)
         wait_time = min(poll_interval, 60)
         run_info = client.run(run_id).wait_for_finish(wait_secs=wait_time)
         poll_count += 1
