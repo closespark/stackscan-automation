@@ -10,6 +10,10 @@ This is the Render worker entrypoint that:
 5. Runs HubSpot scanning + email extraction
 6. Stores results in Supabase hubspot_scans table
 
+The Apify Google Maps scraper is run asynchronously with polling to avoid
+HTTP connection timeouts on long-running scrape jobs. The run is started
+immediately and then polled for completion status.
+
 Environment Variables Required:
     SUPABASE_URL: Your Supabase project URL
     SUPABASE_SERVICE_KEY: Your Supabase service role key
@@ -20,6 +24,8 @@ Optional Environment Variables:
     SUPABASE_DOMAIN_TABLE: Table for domain tracking (default: domains_seen)
     APIFY_ACTOR: Apify actor ID (default: compass/crawler-google-places)
     APIFY_MAX_PLACES: Max places to crawl per search (default: 1000)
+    APIFY_POLL_INTERVAL: Seconds between Apify run status polls (default: 30)
+    APIFY_RUN_TIMEOUT: Maximum seconds to wait for Apify run (default: 3600)
     CATEGORIES_FILE: Path to categories JSON (default: config/categories-250.json)
     SCANNER_MAX_EMAIL_PAGES: Max pages to crawl for emails (default: 10)
     SCANNER_DISABLE_EMAILS: Set to 'true' to skip email extraction
@@ -81,6 +87,8 @@ SUPABASE_DOMAIN_TABLE = os.getenv("SUPABASE_DOMAIN_TABLE", "domains_seen")
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 APIFY_ACTOR = os.getenv("APIFY_ACTOR", "compass/crawler-google-places")
 APIFY_MAX_PLACES = int(os.getenv("APIFY_MAX_PLACES", "1000"))
+APIFY_POLL_INTERVAL = int(os.getenv("APIFY_POLL_INTERVAL", "30"))  # seconds
+APIFY_RUN_TIMEOUT = int(os.getenv("APIFY_RUN_TIMEOUT", "3600"))  # seconds (1 hour default)
 
 CATEGORIES_FILE = os.getenv("CATEGORIES_FILE", "config/categories-250.json")
 SCANNER_MAX_EMAIL_PAGES = int(os.getenv("SCANNER_MAX_EMAIL_PAGES", "10"))
@@ -99,6 +107,8 @@ def log_config():
     logger.info(f"  APIFY_TOKEN: {'[SET]' if APIFY_TOKEN else '[NOT SET]'}")
     logger.info(f"  APIFY_ACTOR: {APIFY_ACTOR}")
     logger.info(f"  APIFY_MAX_PLACES: {APIFY_MAX_PLACES}")
+    logger.info(f"  APIFY_POLL_INTERVAL: {APIFY_POLL_INTERVAL} seconds")
+    logger.info(f"  APIFY_RUN_TIMEOUT: {APIFY_RUN_TIMEOUT} seconds")
     logger.info(f"  CATEGORIES_FILE: {CATEGORIES_FILE}")
     logger.info(f"  SCANNER_MAX_EMAIL_PAGES: {SCANNER_MAX_EMAIL_PAGES}")
     logger.info(f"  SCANNER_DISABLE_EMAILS: {SCANNER_DISABLE_EMAILS}")
@@ -179,10 +189,16 @@ def pick_today_category(categories: list[str]) -> str:
 
 # ---------- APIFY / GOOGLE PLACES SCRAPE ----------
 
+# Terminal statuses for Apify runs
+APIFY_TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"}
+
 
 def get_domains_from_category(apify_client: ApifyClient, category: str) -> list[str]:
     """
     Scrape Google Places for a category and extract domains.
+
+    Uses async run with polling to avoid HTTP connection timeouts on long-running
+    scrape jobs. The run is started asynchronously and then polled for completion.
 
     Args:
         apify_client: The Apify client instance
@@ -190,6 +206,9 @@ def get_domains_from_category(apify_client: ApifyClient, category: str) -> list[
 
     Returns:
         List of normalized domain strings
+
+    Raises:
+        RuntimeError: If the Apify run fails, times out, or is aborted
     """
     logger.info("=" * 60)
     logger.info("STEP: APIFY GOOGLE PLACES SCRAPE")
@@ -224,19 +243,82 @@ def get_domains_from_category(apify_client: ApifyClient, category: str) -> list[
 
     logger.info(f"Apify actor: {APIFY_ACTOR}")
     logger.info(f"Max places per search: {APIFY_MAX_PLACES}")
-    logger.info("Calling Apify actor... (this may take several minutes)")
-    
+    logger.info(f"Run timeout: {APIFY_RUN_TIMEOUT} seconds")
+    logger.info(f"Poll interval: {APIFY_POLL_INTERVAL} seconds")
+
+    # Start the actor run asynchronously (returns immediately)
+    logger.info("Starting Apify actor run asynchronously...")
     start_time = time.time()
-    run = apify_client.actor(APIFY_ACTOR).call(run_input=payload)
+    run = apify_client.actor(APIFY_ACTOR).start(run_input=payload)
+    run_id = run.get("id")
+    dataset_id = run.get("defaultDatasetId")
+
+    logger.info(f"Apify run started successfully")
+    logger.info(f"  Run ID: {run_id}")
+    logger.info(f"  Dataset ID: {dataset_id}")
+    logger.info(f"  Status: {run.get('status')}")
+    logger.info("Waiting for run to complete... (polling for status)")
+
+    # Poll for run completion
+    poll_count = 0
+    while True:
+        elapsed = time.time() - start_time
+
+        # Check for timeout
+        if elapsed > APIFY_RUN_TIMEOUT:
+            logger.error(f"Apify run timed out after {APIFY_RUN_TIMEOUT} seconds")
+            # Try to abort the run
+            try:
+                apify_client.run(run_id).abort()
+                logger.info("Run aborted successfully")
+            except Exception as e:
+                logger.warning(f"Failed to abort run: {e}")
+            raise RuntimeError(
+                f"Apify run timed out after {APIFY_RUN_TIMEOUT} seconds"
+            )
+
+        # Wait for the next poll interval (with a max of 60 seconds for API limit)
+        wait_time = min(APIFY_POLL_INTERVAL, 60)
+        run_info = apify_client.run(run_id).wait_for_finish(wait_secs=wait_time)
+        poll_count += 1
+
+        if run_info is None:
+            logger.warning(f"Failed to get run info, retrying...")
+            time.sleep(5)
+            continue
+
+        status = run_info.get("status", "UNKNOWN")
+        status_message = run_info.get("statusMessage", "")
+
+        # Log progress
+        logger.info(
+            f"  [{poll_count}] Status: {status} | Elapsed: {elapsed:.0f}s | {status_message}"
+        )
+
+        # Check if run is complete
+        if status in APIFY_TERMINAL_STATUSES:
+            if status == "SUCCEEDED":
+                logger.info(f"Apify run completed successfully in {elapsed:.1f} seconds")
+                break
+            elif status == "FAILED":
+                error_msg = run_info.get("statusMessage", "Unknown error")
+                logger.error(f"Apify run failed: {error_msg}")
+                raise RuntimeError(f"Apify run failed: {error_msg}")
+            elif status == "TIMED-OUT":
+                logger.error("Apify run timed out on the server side")
+                raise RuntimeError("Apify run timed out on the server side")
+            elif status == "ABORTED":
+                logger.error("Apify run was aborted")
+                raise RuntimeError("Apify run was aborted")
+
     elapsed = time.time() - start_time
-    
-    logger.info(f"Apify actor completed in {elapsed:.1f} seconds")
-    logger.info(f"Run ID: {run.get('id', 'N/A')}")
-    logger.info(f"Dataset ID: {run.get('defaultDatasetId', 'N/A')}")
-    
+    logger.info(f"Total run time: {elapsed:.1f} seconds")
+    logger.info(f"Total poll requests: {poll_count}")
+
+    # Fetch dataset items
     logger.info("Fetching dataset items...")
     dataset_items = list(
-        apify_client.dataset(run["defaultDatasetId"]).iterate_items()
+        apify_client.dataset(dataset_id).iterate_items()
     )
 
     logger.info(f"Retrieved {len(dataset_items)} places from Google Places")

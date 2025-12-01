@@ -351,6 +351,8 @@ Set these in the Render dashboard:
 | `LOG_LEVEL` | `INFO` | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
 | `APIFY_MAX_PLACES` | `1000` | Max places to crawl per Google Places search |
 | `APIFY_ACTOR` | `compass/crawler-google-places` | Apify actor ID |
+| `APIFY_POLL_INTERVAL` | `30` | Seconds between Apify run status polls |
+| `APIFY_RUN_TIMEOUT` | `3600` | Maximum seconds to wait for Apify run (1 hour) |
 | `SUPABASE_TABLE` | `hubspot_scans` | Table for scan results |
 | `SUPABASE_DOMAIN_TABLE` | `domains_seen` | Table for domain tracking |
 | `CATEGORIES_FILE` | `config/categories-250.json` | Path to categories JSON |

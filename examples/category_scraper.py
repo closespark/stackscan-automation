@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime
 
 from apify_client import ApifyClient
@@ -35,6 +36,11 @@ from apify_client import ApifyClient
 # Configuration constants
 DEFAULT_MAX_PLACES = 1000
 DEFAULT_ACTOR_ID = "compass/crawler-google-places"
+DEFAULT_POLL_INTERVAL = 30  # seconds
+DEFAULT_RUN_TIMEOUT = 3600  # 1 hour
+
+# Terminal statuses for Apify runs
+APIFY_TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"}
 
 
 # Business categories to scrape
@@ -320,17 +326,27 @@ def run_category(
     client: ApifyClient,
     category: str,
     max_places: int = DEFAULT_MAX_PLACES,
+    poll_interval: int = DEFAULT_POLL_INTERVAL,
+    run_timeout: int = DEFAULT_RUN_TIMEOUT,
 ) -> list[dict]:
     """
     Run the Apify crawler for a single category.
+
+    Uses async run with polling to avoid HTTP connection timeouts on long-running
+    scrape jobs. The run is started asynchronously and then polled for completion.
 
     Args:
         client: The Apify client instance
         category: The business category to search for
         max_places: Maximum number of places to crawl per category
+        poll_interval: Seconds between status polls (default: 30)
+        run_timeout: Maximum seconds to wait for run completion (default: 3600)
 
     Returns:
         List of places data from the crawler
+
+    Raises:
+        RuntimeError: If the Apify run fails, times out, or is aborted
     """
     print(f"Running category: {category}")
 
@@ -360,9 +376,68 @@ def run_category(
         "maxCrawledPlacesPerSearch": max_places,
     }
 
-    run = client.actor(DEFAULT_ACTOR_ID).call(run_input=payload)
+    # Start the actor run asynchronously (returns immediately)
+    print("  Starting Apify actor run asynchronously...")
+    start_time = time.time()
+    run = client.actor(DEFAULT_ACTOR_ID).start(run_input=payload)
+    run_id = run.get("id")
+    dataset_id = run.get("defaultDatasetId")
 
-    dataset_items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+    print(f"  Run ID: {run_id}")
+    print(f"  Dataset ID: {dataset_id}")
+    print("  Waiting for run to complete... (polling for status)")
+
+    # Poll for run completion
+    poll_count = 0
+    while True:
+        elapsed = time.time() - start_time
+
+        # Check for timeout
+        if elapsed > run_timeout:
+            print(f"  ERROR: Run timed out after {run_timeout} seconds")
+            # Try to abort the run
+            try:
+                client.run(run_id).abort()
+                print("  Run aborted successfully")
+            except Exception as e:
+                print(f"  Warning: Failed to abort run: {e}")
+            raise RuntimeError(f"Apify run timed out after {run_timeout} seconds")
+
+        # Wait for the next poll interval (with a max of 60 seconds for API limit)
+        wait_time = min(poll_interval, 60)
+        run_info = client.run(run_id).wait_for_finish(wait_secs=wait_time)
+        poll_count += 1
+
+        if run_info is None:
+            print("  Warning: Failed to get run info, retrying...")
+            time.sleep(5)
+            continue
+
+        status = run_info.get("status", "UNKNOWN")
+        status_message = run_info.get("statusMessage", "")
+
+        # Log progress
+        print(f"  [{poll_count}] Status: {status} | Elapsed: {elapsed:.0f}s | {status_message}")
+
+        # Check if run is complete
+        if status in APIFY_TERMINAL_STATUSES:
+            if status == "SUCCEEDED":
+                print(f"  Run completed successfully in {elapsed:.1f} seconds")
+                break
+            elif status == "FAILED":
+                error_msg = run_info.get("statusMessage", "Unknown error")
+                print(f"  ERROR: Run failed: {error_msg}")
+                raise RuntimeError(f"Apify run failed: {error_msg}")
+            elif status == "TIMED-OUT":
+                print("  ERROR: Run timed out on the server side")
+                raise RuntimeError("Apify run timed out on the server side")
+            elif status == "ABORTED":
+                print("  ERROR: Run was aborted")
+                raise RuntimeError("Apify run was aborted")
+
+    # Fetch dataset items
+    print("  Fetching dataset items...")
+    dataset_items = list(client.dataset(dataset_id).iterate_items())
     count = len(dataset_items)
 
     print(f"Category '{category}' returned {count} places.")
