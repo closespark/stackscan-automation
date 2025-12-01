@@ -73,3 +73,12 @@ Thumbs.db
 # Project specific
 results.json
 /tmp/
+leads/
+places_data.json
+processed_domains.json
+zapmail_config.json
+
+# Sensitive configuration (keep .example files)
+.env
+*.env.local
+smtp_config.json

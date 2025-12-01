@@ -1,0 +1,9 @@
+Hey there!
+
+I was reviewing {{domain}} and noticed something interesting.
+
+We run a daily scanner that looks at HubSpot implementations across local businesses. If you're open to it, I can share what we found and some suggestions that usually improve leadflow + automations within days.
+
+Let me know if you'd like a quick breakdown.
+
+– Chris

@@ -1,0 +1,30 @@
+{
+  "description": "Sample Zapmail inbox configuration file",
+  "note": "Replace with your actual Zapmail pre-warmed inbox credentials",
+  "inboxes": [
+    {
+      "email": "sender1@warmeddomain.com",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "sender1@warmeddomain.com",
+      "smtp_password": "your_app_password_here",
+      "daily_limit": 40
+    },
+    {
+      "email": "sender2@warmeddomain.com",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "sender2@warmeddomain.com",
+      "smtp_password": "your_app_password_here",
+      "daily_limit": 40
+    },
+    {
+      "email": "sender3@warmeddomain.com",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "sender3@warmeddomain.com",
+      "smtp_password": "your_app_password_here",
+      "daily_limit": 40
+    }
+  ]
+}
