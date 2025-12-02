@@ -23,7 +23,13 @@ create table if not exists tech_scans (
     error text,
     -- Outreach tracking fields
     emailed boolean,
-    emailed_at timestamptz
+    emailed_at timestamptz,
+    -- Calendly booking tracking fields
+    booked boolean,
+    booked_at timestamptz,
+    calendly_event_uri text,
+    calendly_invitee_email text,
+    calendly_event_name text
 );
 
 -- Table for tracking processed domains (deduplication)
@@ -198,3 +204,116 @@ order by total_sends desc;
 -- select domain, category, emails, created_at, emailed, emailed_at, error
 -- from hubspot_scans
 -- where hubspot_detected = true;
+
+-- ============================================================================
+-- CALENDLY BOOKINGS: Conversion Tracking
+-- ============================================================================
+-- Stores Calendly booking records with matched lead metadata for analytics.
+-- This table enables tracking which persona, variant, and technology drove bookings.
+
+create table if not exists calendly_bookings (
+    id uuid primary key default gen_random_uuid(),
+    -- Invitee information
+    invitee_email text not null,
+    invitee_name text,
+    -- Event information
+    event_uri text not null,
+    event_uuid text not null,
+    event_name text,
+    event_start_time timestamptz,
+    event_end_time timestamptz,
+    event_status text,
+    invitee_status text,
+    -- Lead matching
+    matched_lead_id uuid references tech_scans(id),
+    matched_domain text,
+    -- Persona/variant tracking for analytics
+    persona text,                              -- Scott, Tracy, Willa
+    persona_email text,                        -- scott@closespark.co, etc.
+    variant_id text,                           -- shopify_v1, salesforce_v2, etc.
+    main_tech text,                            -- Shopify, Salesforce, etc.
+    -- Timestamps
+    calendly_created_at timestamptz,
+    synced_at timestamptz default now(),
+    -- Unique constraint to prevent duplicate bookings
+    constraint calendly_bookings_unique unique (event_uuid, invitee_email)
+);
+
+-- Indexes for calendly_bookings queries
+create index if not exists idx_calendly_bookings_invitee_email on calendly_bookings(invitee_email);
+create index if not exists idx_calendly_bookings_event_uuid on calendly_bookings(event_uuid);
+create index if not exists idx_calendly_bookings_matched_lead_id on calendly_bookings(matched_lead_id);
+create index if not exists idx_calendly_bookings_persona on calendly_bookings(persona);
+create index if not exists idx_calendly_bookings_variant_id on calendly_bookings(variant_id);
+create index if not exists idx_calendly_bookings_main_tech on calendly_bookings(main_tech);
+create index if not exists idx_calendly_bookings_event_start_time on calendly_bookings(event_start_time);
+create index if not exists idx_tech_scans_booked on tech_scans(booked);
+
+-- ============================================================================
+-- CALENDLY ANALYTICS VIEWS
+-- ============================================================================
+
+-- View: Booking conversion by persona
+create or replace view v_persona_conversions as
+select 
+    coalesce(cb.persona, 'Unknown') as persona,
+    count(*) as total_bookings,
+    count(cb.matched_lead_id) as matched_bookings,
+    min(cb.event_start_time) as first_booking,
+    max(cb.event_start_time) as last_booking
+from calendly_bookings cb
+group by cb.persona
+order by total_bookings desc;
+
+-- View: Booking conversion by variant
+create or replace view v_variant_conversions as
+select 
+    coalesce(cb.variant_id, 'Unknown') as variant_id,
+    coalesce(cb.main_tech, 'Unknown') as main_tech,
+    coalesce(cb.persona, 'Unknown') as persona,
+    count(*) as total_bookings,
+    count(cb.matched_lead_id) as matched_bookings
+from calendly_bookings cb
+group by cb.variant_id, cb.main_tech, cb.persona
+order by total_bookings desc;
+
+-- View: Booking conversion by technology
+create or replace view v_tech_conversions as
+select 
+    coalesce(cb.main_tech, 'Unknown') as main_tech,
+    count(*) as total_bookings,
+    count(cb.matched_lead_id) as matched_bookings
+from calendly_bookings cb
+group by cb.main_tech
+order by total_bookings desc;
+
+-- View: Full conversion funnel (emails sent -> bookings)
+create or replace view v_conversion_funnel as
+select 
+    es.persona,
+    es.persona_email,
+    es.main_tech,
+    es.variant_id,
+    es.send_count as emails_sent,
+    coalesce(cb.booking_count, 0) as bookings,
+    case 
+        when es.send_count > 0 then 
+            round((coalesce(cb.booking_count, 0)::numeric / es.send_count) * 100, 2)
+        else 0
+    end as conversion_rate_pct
+from email_stats es
+left join (
+    select 
+        persona,
+        persona_email,
+        main_tech,
+        variant_id,
+        count(*) as booking_count
+    from calendly_bookings
+    where matched_lead_id is not null
+    group by persona, persona_email, main_tech, variant_id
+) cb on es.persona = cb.persona 
+    and es.persona_email = cb.persona_email 
+    and es.main_tech = cb.main_tech 
+    and es.variant_id = cb.variant_id
+order by conversion_rate_pct desc, emails_sent desc;

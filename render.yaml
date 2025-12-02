@@ -2,14 +2,15 @@
 # Replace placeholder values with your own before deploying
 
 services:
+  # Single worker that runs all tasks sequentially
   - type: worker
-    name: tech-scan-pipeline-worker
+    name: daily-pipeline-worker
     env: docker
     plan: starter
     dockerfilePath: ./Dockerfile
     autoDeploy: true
     envVars:
-      # Replace with your Supabase project URL
+      # Supabase Configuration
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
@@ -18,6 +19,7 @@ services:
         value: tech_scans
       - key: SUPABASE_DOMAIN_TABLE
         value: domains_seen
+      # Apify Configuration
       - key: APIFY_TOKEN
         sync: false
       - key: APIFY_ACTOR
@@ -28,19 +30,7 @@ services:
         value: "false"
       - key: CATEGORIES_FILE
         value: config/categories-250.json
-
-  - type: worker
-    name: outreach-worker
-    env: docker
-    plan: starter
-    dockerfilePath: ./Dockerfile
-    autoDeploy: true
-    envVars:
-      # Replace with your Supabase project URL
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
+      # Outreach Configuration
       - key: OUTREACH_TABLE
         value: tech_scans
       # SMTP_ACCOUNTS_JSON format: {"inboxes":[{"email":"...","smtp_host":"...","smtp_port":587,"smtp_user":"...","smtp_password":"..."}]}
@@ -52,14 +42,22 @@ services:
         value: "50"
       - key: SMTP_SEND_DELAY_SECONDS
         value: "4"
+      # Calendly Configuration (optional - leave CALENDLY_API_TOKEN empty to skip sync)
+      - key: CALENDLY_API_TOKEN
+        sync: false
+      - key: CALENDLY_SYNC_TABLE
+        value: tech_scans
+      - key: CALENDLY_BOOKINGS_TABLE
+        value: calendly_bookings
+      - key: CALENDLY_LOOKBACK_DAYS
+        value: "7"
 
 cronJobs:
-  - name: daily-tech-domain-scan
+  # Runs at 6:00 AM UTC daily - executes all workers sequentially:
+  # 1. Pipeline Worker (scan domains for tech)
+  # 2. Outreach Worker (send emails)
+  # 3. Calendly Sync (track bookings)
+  - name: daily-pipeline
     schedule: "0 6 * * *"
-    service: tech-scan-pipeline-worker
-    command: "python pipeline_worker.py"
-
-  - name: daily-outreach-send
-    schedule: "0 14 * * *"
-    service: outreach-worker
-    command: "python outreach_worker.py"
+    service: daily-pipeline-worker
+    command: "python daily_worker.py"
