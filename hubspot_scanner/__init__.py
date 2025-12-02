@@ -24,6 +24,15 @@ from .email_generator import (
     generate_email_body,
     GeneratedEmail,
     CONSULTANT_PROFILE,
+    # New A/B email generation
+    GeneratedEmailAB,
+    TECHNOLOGY_CATEGORIES,
+    generate_email_ab,
+    generate_all_category_emails,
+    generate_outreach_email_ab,
+    generate_version_a_email,
+    generate_version_b_email,
+    generate_subject_lines_ab,
 )
 from .tech_scanner import (
     scan_technologies,
@@ -56,6 +65,15 @@ __all__ = [
     "generate_email_body",
     "GeneratedEmail",
     "CONSULTANT_PROFILE",
+    # A/B email generation
+    "GeneratedEmailAB",
+    "TECHNOLOGY_CATEGORIES",
+    "generate_email_ab",
+    "generate_all_category_emails",
+    "generate_outreach_email_ab",
+    "generate_version_a_email",
+    "generate_version_b_email",
+    "generate_subject_lines_ab",
     # Unified scanner
     "scan_technologies",
     "scan_technologies_batch",
