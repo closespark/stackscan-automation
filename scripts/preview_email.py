@@ -29,7 +29,7 @@ from typing import Any
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from hubspot_scanner.email_generator import (
+from stackscanner.email_generator import (
     generate_persona_outreach_email,
     get_persona_for_email,
     get_variant_for_tech,

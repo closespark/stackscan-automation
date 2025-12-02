@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup script for HubSpot Presence Scanner."""
+"""Setup script for Tech Stack Scanner."""
 
 from setuptools import setup, find_packages
 
@@ -10,13 +10,13 @@ with open("requirements.txt", "r", encoding="utf-8") as f:
     requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 setup(
-    name="hubspot-presence-scanner",
+    name="stackscan-automation",
     version="1.0.0",
-    author="HubSpot Scanner Team",
-    description="Detect HubSpot usage on websites by scanning for tracking codes, forms, and COS signatures",
+    author="Stack Scanner Team",
+    description="Detect technology stacks on websites and generate personalized outreach emails",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/inevitablesale/hubspot-presence-scanner",
+    url="https://github.com/closespark/stackscan-automation",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -34,8 +34,8 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "hubspot-scanner=hubspot_scanner.cli:main",
-            "tech-scanner=hubspot_scanner.tech_cli:main",
+            "stack-scanner=stackscanner.cli:main",
+            "tech-scanner=stackscanner.tech_cli:main",
         ],
     },
 )

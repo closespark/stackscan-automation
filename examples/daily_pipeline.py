@@ -47,7 +47,7 @@ from apify_client import ApifyClient
 
 # Import the HubSpot scanner
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from hubspot_scanner import scan_domain
+from stackscanner import scan_domain
 
 
 # Configuration constants

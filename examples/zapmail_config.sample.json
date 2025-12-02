@@ -1,28 +1,22 @@
 {
-  "description": "Sample SMTP inbox configuration for CloseSpark outreach",
-  "note": "Replace smtp_password with your actual Gmail app passwords",
-  "format_note": "The 'email' field determines which persona sends the email (Scott, Tracy, or Willa)",
+  "description": "Sample SMTP inbox configuration for outreach automation",
+  "how_to_get": "Export from Zapmail: Settings > Inboxes > Export Configuration, or configure manually for any SMTP provider",
+  "note": "Replace with your actual email addresses and SMTP credentials",
+  "format_note": "The 'email' field determines which persona sends the email. Set PERSONA_MAP_JSON env var to match these emails.",
   "inboxes": [
     {
-      "email": "scott@closespark.co",
+      "email": "john@yourdomain.com",
       "smtp_host": "smtp.gmail.com",
       "smtp_port": 587,
-      "smtp_user": "scott@closespark.co",
-      "smtp_password": "your_app_password_here"
+      "smtp_user": "john@yourdomain.com",
+      "smtp_password": "your_gmail_app_password"
     },
     {
-      "email": "tracy@closespark.co",
+      "email": "jane@yourdomain.com",
       "smtp_host": "smtp.gmail.com",
       "smtp_port": 587,
-      "smtp_user": "tracy@closespark.co",
-      "smtp_password": "your_app_password_here"
-    },
-    {
-      "email": "willa@closespark.co",
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587,
-      "smtp_user": "willa@closespark.co",
-      "smtp_password": "your_app_password_here"
+      "smtp_user": "jane@yourdomain.com",
+      "smtp_password": "your_gmail_app_password"
     }
   ]
 }

@@ -6,10 +6,19 @@ following best practices for consultant-style outreach.
 
 Supports:
 - Multiple variants per MainTech (Shopify, Salesforce, WordPress, etc.)
-- Persona-based email generation (Scott, Tracy, Willa)
+- Persona-based email generation (configurable via env vars)
 - Variant tracking for A/B analysis
+
+Environment Variables for Company Profile:
+- COMPANY_NAME: Your company name (default: "Your Company")
+- COMPANY_LOCATION: Your city/location (default: "Your City")
+- COMPANY_HOURLY_RATE: Hourly rate displayed in emails (default: "$XX/hr")
+- COMPANY_GITHUB: Your GitHub URL (default: "")
+- COMPANY_CALENDLY: Your Calendly booking link (default: "")
 """
 
+import json
+import os
 import random
 from dataclasses import dataclass
 from typing import Any
@@ -17,50 +26,86 @@ from typing import Any
 from .tech_scorer import ScoredTechnology, get_highest_value_tech
 
 
-# CloseSpark company configuration
-CLOSESPARK_PROFILE = {
-    "company": "CloseSpark",
-    "location": "Richmond, VA",
-    "hourly_rate": "$85/hr",
-    "github": "https://github.com/closespark/",
-    "calendly": "https://calendly.com/closespark/technical-systems-consultation",
-}
+def _load_company_profile() -> dict[str, str]:
+    """
+    Load company profile from environment variables.
+    
+    Returns:
+        Dictionary with company profile settings
+    """
+    return {
+        "company": os.getenv("COMPANY_NAME", "Your Company"),
+        "location": os.getenv("COMPANY_LOCATION", "Your City"),
+        "hourly_rate": os.getenv("COMPANY_HOURLY_RATE", "$XX/hr"),
+        "github": os.getenv("COMPANY_GITHUB", ""),
+        "calendly": os.getenv("COMPANY_CALENDLY", ""),
+    }
 
-# Persona map based on SMTP_ACCOUNTS_JSON email addresses
-PERSONA_MAP = {
-    "scott@closespark.co": {
-        "name": "Scott",
-        "role": "Systems Engineer",
-        "tone": "concise, technical, straight to the point",
-    },
-    "tracy@closespark.co": {
-        "name": "Tracy",
-        "role": "Technical Project Lead",
-        "tone": "structured, slightly more formal",
-    },
-    "willa@closespark.co": {
-        "name": "Willa",
-        "role": "Automation Specialist",
-        "tone": "friendly but still professional",
-    },
-}
 
-# Default persona for backwards compatibility
-DEFAULT_PERSONA = {
-    "name": "Scott",
-    "email": "scott@closespark.co",
-    "role": "Systems Engineer",
-    "tone": "concise, technical, straight to the point",
-}
+def _load_persona_map() -> dict[str, dict[str, str]]:
+    """
+    Load persona map from PERSONA_MAP_JSON environment variable.
+    
+    The PERSONA_MAP_JSON should be a JSON object mapping email addresses to persona info:
+    {
+        "persona1@example.com": {"name": "John", "role": "Engineer", "tone": "technical"},
+        "persona2@example.com": {"name": "Jane", "role": "Lead", "tone": "formal"}
+    }
+    
+    Returns:
+        Dictionary mapping email addresses to persona dictionaries
+    """
+    persona_json = os.getenv("PERSONA_MAP_JSON", "")
+    if persona_json:
+        try:
+            return json.loads(persona_json)
+        except json.JSONDecodeError:
+            pass
+    
+    # Return empty dict if not configured - will use default persona
+    return {}
+
+
+# Company profile loaded from environment variables
+COMPANY_PROFILE = _load_company_profile()
+
+# Persona map loaded from environment variables
+PERSONA_MAP = _load_persona_map()
+
+# Legacy alias for backwards compatibility
+CLOSESPARK_PROFILE = COMPANY_PROFILE
+
+# Default persona for backwards compatibility (loads from env or uses generic default)
+def _get_default_persona() -> dict[str, str]:
+    """Get default persona from PERSONA_MAP or use generic default."""
+    if PERSONA_MAP:
+        # Use the first persona in the map as default
+        first_email = next(iter(PERSONA_MAP))
+        persona = PERSONA_MAP[first_email]
+        return {
+            "name": persona.get("name", "Consultant"),
+            "email": first_email,
+            "role": persona.get("role", "Technical Specialist"),
+            "tone": persona.get("tone", "professional"),
+        }
+    # Generic default if no personas configured
+    return {
+        "name": os.getenv("DEFAULT_PERSONA_NAME", "Consultant"),
+        "email": os.getenv("DEFAULT_PERSONA_EMAIL", ""),
+        "role": os.getenv("DEFAULT_PERSONA_ROLE", "Technical Specialist"),
+        "tone": os.getenv("DEFAULT_PERSONA_TONE", "professional"),
+    }
+
+
+DEFAULT_PERSONA = _get_default_persona()
 
 # Legacy consultant profile for backwards compatibility
-# Updated to use CloseSpark profile (no longer uses "Chris")
 CONSULTANT_PROFILE = {
     "name": DEFAULT_PERSONA["name"],
-    "location": CLOSESPARK_PROFILE["location"],
-    "hourly_rate": CLOSESPARK_PROFILE["hourly_rate"],
-    "github": CLOSESPARK_PROFILE["github"],
-    "calendly": CLOSESPARK_PROFILE["calendly"],
+    "location": COMPANY_PROFILE["location"],
+    "hourly_rate": COMPANY_PROFILE["hourly_rate"],
+    "github": COMPANY_PROFILE["github"],
+    "calendly": COMPANY_PROFILE["calendly"],
     "positioning": "freelance technical specialist",
 }
 
@@ -475,9 +520,11 @@ EMAIL_VARIANTS = {
     ],
 }
 
-# Subject variants per persona and MainTech
-SUBJECT_VARIANTS = {
-    "scott@closespark.co": {
+# Subject variants organized by tone (instead of hardcoded email addresses)
+# The system uses persona tone to select appropriate subject style
+SUBJECT_VARIANTS_BY_TONE = {
+    "technical": {
+        # Concise, technical, straight to the point
         "Shopify": [
             "Shopify integration issue on {{domain}}?",
             "Quick Shopify improvement idea for {{domain}}",
@@ -529,7 +576,8 @@ SUBJECT_VARIANTS = {
             "Noticed your WooCommerce store",
         ],
     },
-    "tracy@closespark.co": {
+    "formal": {
+        # Structured, slightly more formal
         "Shopify": [
             "Technical review: Shopify on {{domain}}",
             "Shopify integration assessment for {{domain}}",
@@ -581,59 +629,81 @@ SUBJECT_VARIANTS = {
             "Following up on your WooCommerce store",
         ],
     },
-    "willa@closespark.co": {
+    "friendly": {
+        # Friendly but still professional
         "Shopify": [
-            "Hi from CloseSpark — Shopify help for {{domain}}",
             "Quick idea for your Shopify store",
             "Reaching out about your Shopify setup",
+            "Shopify help for {{domain}}",
         ],
         "Salesforce": [
-            "Hi from CloseSpark — Salesforce help for {{domain}}",
             "Quick idea for your Salesforce setup",
             "Reaching out about your Salesforce",
+            "Salesforce help for {{domain}}",
         ],
         "WordPress": [
-            "Hi from CloseSpark — WordPress help for {{domain}}",
             "Quick idea for your WordPress site",
             "Reaching out about your WordPress setup",
+            "WordPress help for {{domain}}",
         ],
         "HubSpot": [
-            "Hi from CloseSpark — HubSpot help for {{domain}}",
             "Quick idea for your HubSpot setup",
             "Reaching out about your HubSpot",
+            "HubSpot help for {{domain}}",
         ],
         "Klaviyo": [
-            "Hi from CloseSpark — Klaviyo help for {{domain}}",
             "Quick idea for your Klaviyo flows",
             "Reaching out about your Klaviyo setup",
+            "Klaviyo help for {{domain}}",
         ],
         "Google Analytics": [
-            "Hi from CloseSpark — Analytics help for {{domain}}",
             "Quick idea for your analytics setup",
             "Reaching out about your tracking",
+            "Analytics help for {{domain}}",
         ],
         "GA4": [
-            "Hi from CloseSpark — GA4 help for {{domain}}",
             "Quick idea for your GA4 setup",
             "Reaching out about your analytics",
+            "GA4 help for {{domain}}",
         ],
         "Magento": [
-            "Hi from CloseSpark — Magento help for {{domain}}",
             "Quick idea for your Magento store",
             "Reaching out about your Magento setup",
+            "Magento help for {{domain}}",
         ],
         "Stripe": [
-            "Hi from CloseSpark — Stripe help for {{domain}}",
             "Quick idea for your Stripe integration",
             "Reaching out about your Stripe setup",
+            "Stripe help for {{domain}}",
         ],
         "WooCommerce": [
-            "Hi from CloseSpark — WooCommerce help for {{domain}}",
             "Quick idea for your WooCommerce store",
             "Reaching out about your WooCommerce setup",
+            "WooCommerce help for {{domain}}",
         ],
     },
 }
+
+# Legacy SUBJECT_VARIANTS - dynamically built from PERSONA_MAP
+# Maps email addresses to subject variants based on their persona tone
+def _build_subject_variants() -> dict:
+    """Build SUBJECT_VARIANTS from PERSONA_MAP and tone-based templates."""
+    result = {}
+    for email, persona_info in PERSONA_MAP.items():
+        tone = persona_info.get("tone", "technical")
+        # Map tone keywords to our categories
+        if "friendly" in tone.lower():
+            tone_key = "friendly"
+        elif "formal" in tone.lower() or "structured" in tone.lower():
+            tone_key = "formal"
+        else:
+            tone_key = "technical"
+        
+        result[email] = SUBJECT_VARIANTS_BY_TONE.get(tone_key, SUBJECT_VARIANTS_BY_TONE["technical"])
+    return result
+
+
+SUBJECT_VARIANTS = _build_subject_variants()
 
 # 12 Technology Categories with representative technologies
 TECHNOLOGY_CATEGORIES = {
@@ -1558,6 +1628,12 @@ def generate_persona_email_body(
     """
     name = persona["name"]
     role = persona["role"]
+    company = COMPANY_PROFILE["company"]
+    location = COMPANY_PROFILE["location"]
+    hourly_rate = COMPANY_PROFILE["hourly_rate"]
+    calendly = COMPANY_PROFILE["calendly"]
+    github = COMPANY_PROFILE["github"]
+    
     bullets = variant.get("bullets", [
         "Integration and sync issues",
         "Automation and workflow problems",
@@ -1576,31 +1652,29 @@ def generate_persona_email_body(
     
     # Build the email based on persona tone
     if persona.get("tone", "").startswith("friendly"):
-        # Willa's friendly tone
-        greeting = f"Hi — I'm {name} from CloseSpark in {CLOSESPARK_PROFILE['location']}."
+        greeting = f"Hi — I'm {name} from {company} in {location}."
     elif persona.get("tone", "").startswith("structured"):
-        # Tracy's more formal tone
-        greeting = f"Hello — I'm {name} with CloseSpark, based in {CLOSESPARK_PROFILE['location']}."
+        greeting = f"Hello — I'm {name} with {company}, based in {location}."
     else:
-        # Scott's concise/technical tone (default)
-        greeting = f"Hi — I'm {name} from CloseSpark in {CLOSESPARK_PROFILE['location']}."
+        # Default concise/technical tone
+        greeting = f"Hi — I'm {name} from {company} in {location}."
     
-    email = f"""{greeting}
-
-I saw that {domain} is running {main_tech}{supporting_mention}, and I specialize in short-term technical fixes for stacks like yours.
-
-{bullet_list}
-
-Hourly: {CLOSESPARK_PROFILE['hourly_rate']}, strictly short-term — no long-term commitment.
-
-If it would help to have a specialist jump in, you can grab time here:
-{CLOSESPARK_PROFILE['calendly']}
-
-– {name}
-{role}, CloseSpark
-{CLOSESPARK_PROFILE['github']}"""
+    # Build email body
+    email_parts = [greeting]
+    email_parts.append(f"\nI saw that {domain} is running {main_tech}{supporting_mention}, and I specialize in short-term technical fixes for stacks like yours.\n")
+    email_parts.append(bullet_list)
+    email_parts.append(f"\nHourly: {hourly_rate}, strictly short-term — no long-term commitment.")
     
-    return email
+    if calendly:
+        email_parts.append(f"\nIf it would help to have a specialist jump in, you can grab time here:\n{calendly}")
+    
+    email_parts.append(f"\n– {name}")
+    email_parts.append(f"{role}, {company}")
+    
+    if github:
+        email_parts.append(github)
+    
+    return "\n".join(email_parts)
 
 
 @dataclass

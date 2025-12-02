@@ -1,4 +1,4 @@
-# CloseSpark Tech Stack Scanner
+# Tech Stack Scanner
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -12,13 +12,39 @@ Wappalyzer-style domain scanner that detects **40+ technologies** across busines
 
 - **Multi-Technology Detection**: Detects 40+ technologies including HubSpot, Salesforce, Shopify, Stripe, and more
 - **Technology Scoring**: Scores each technology 1-5 based on value and specialization
-- **Persona-Based Email Generation**: Generates personalized outreach emails with distinct personas (Scott, Tracy, Willa)
+- **Persona-Based Email Generation**: Generates personalized outreach emails with configurable personas
 - **Multiple Email Variants**: 2-3 email variants per technology for A/B testing
 - **Variant Tracking**: Full metadata tracking for analytics (variant_id, persona, persona_email)
 - **Email Extraction**: Crawls sites to find non-generic business email addresses
 - **Generic Email Filtering**: Automatically excludes info@, support@, admin@, hello@, sales@, etc.
 - **JSON Output**: Structured output with technologies, scores, and generated emails
 - **CLI & Library**: Use as command-line tool or import as Python library
+- **Automated Pipeline**: Daily worker for Google Places scraping, tech scanning, and outreach
+- **Calendly Integration**: Track meeting bookings and conversion analytics
+- **Fully Configurable**: All company details, personas, and settings via environment variables
+
+---
+
+## Table of Contents
+
+1. [Installation](#installation)
+2. [Quick Start](#quick-start)
+3. [Complete Setup Guide](#complete-setup-guide)
+   - [1. Supabase Setup](#1-supabase-setup)
+   - [2. Apify Setup (Google Places Scraping)](#2-apify-setup-google-places-scraping)
+   - [3. Zapmail/SMTP Setup](#3-zapmailsmtp-setup)
+   - [4. Calendly Setup](#4-calendly-setup)
+   - [5. Company Profile & Personas](#5-company-profile--personas)
+   - [6. Render Deployment](#6-render-deployment)
+4. [Environment Variables Reference](#environment-variables-reference)
+5. [Architecture](#architecture)
+6. [Email Generation](#email-generation)
+7. [Analytics & Tracking](#analytics--tracking)
+8. [CLI Reference](#cli-reference)
+9. [Examples](#examples)
+10. [Supported Technologies](#supported-technologies)
+
+---
 
 ## Installation
 
@@ -43,7 +69,7 @@ pip install -e .
 tech-scanner example.com
 
 # Scan multiple domains
-tech-scanner shopify.com hubspot.com stripe.com
+tech-scanner shopify.com stripe.com
 
 # Save results with email generation
 tech-scanner -f domains.txt -o results.json
@@ -55,7 +81,7 @@ tech-scanner example.com --no-email
 ### Python Library
 
 ```python
-from hubspot_scanner import scan_technologies, generate_persona_outreach_email
+from stackscanner import scan_technologies, generate_persona_outreach_email
 
 # Scan a domain for technologies
 result = scan_technologies("example.com")
@@ -67,40 +93,383 @@ email = generate_persona_outreach_email(
     domain="example.com",
     main_tech="Shopify",
     supporting_techs=["Stripe", "Klaviyo"],
-    from_email="scott@closespark.co"
+    from_email="your-persona@yourdomain.com"
 )
 print(f"Subject: {email.subject}")
-print(f"Persona: {email.persona} ({email.persona_role})")
-print(f"Variant: {email.variant_id}")
 print(f"Body:\n{email.body}")
 ```
 
-## Persona System
+---
 
-The outreach system uses three distinct personas tied to SMTP sender addresses:
+## Complete Setup Guide
 
-| Email | Persona | Role | Tone |
-|-------|---------|------|------|
-| `scott@closespark.co` | Scott | Systems Engineer | Concise, technical, straight to the point |
-| `tracy@closespark.co` | Tracy | Technical Project Lead | Structured, slightly more formal |
-| `willa@closespark.co` | Willa | Automation Specialist | Friendly but still professional |
+This guide walks you through setting up all the external services needed to run the full automated pipeline.
 
-Each email includes:
-- **CloseSpark branding** with Richmond, VA location
-- **Hourly rate**: $85/hr
-- **Calendly link**: https://calendly.com/closespark/technical-systems-consultation
-- **GitHub link**: https://github.com/closespark/
+### 1. Supabase Setup
 
-## Email Variants
+Supabase is used to store scan results, track domains, and manage analytics.
+
+#### Create a Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and create a new project
+2. Note your **Project URL** and **Service Role Key** (found in Settings > API)
+
+#### Create the Required Tables
+
+Open the Supabase SQL Editor and run the full schema from `config/supabase_schema.sql`, or use these essential tables:
+
+```sql
+-- Enable UUID extension
+create extension if not exists "pgcrypto";
+
+-- Main table for technology scan results
+create table if not exists tech_scans (
+    id uuid primary key default gen_random_uuid(),
+    domain text not null,
+    technologies jsonb default '[]'::jsonb,
+    scored_technologies jsonb default '[]'::jsonb,
+    top_technology jsonb,
+    emails jsonb default '[]'::jsonb,
+    generated_email jsonb,
+    category text,
+    created_at timestamptz default now(),
+    error text,
+    emailed boolean,
+    emailed_at timestamptz,
+    -- Calendly booking tracking
+    booked boolean,
+    booked_at timestamptz,
+    calendly_event_uri text,
+    calendly_invitee_email text,
+    calendly_event_name text
+);
+
+-- Track processed domains to avoid duplicates
+create table if not exists domains_seen (
+    domain text primary key,
+    category text,
+    first_seen timestamptz default now(),
+    last_scanned timestamptz default now(),
+    times_scanned int default 1
+);
+
+-- Calendly booking records for conversion analytics
+create table if not exists calendly_bookings (
+    id uuid primary key default gen_random_uuid(),
+    invitee_email text not null,
+    invitee_name text,
+    event_uri text not null,
+    event_uuid text not null,
+    event_name text,
+    event_start_time timestamptz,
+    event_end_time timestamptz,
+    event_status text,
+    invitee_status text,
+    matched_lead_id uuid references tech_scans(id),
+    matched_domain text,
+    persona text,
+    persona_email text,
+    variant_id text,
+    main_tech text,
+    calendly_created_at timestamptz,
+    synced_at timestamptz default now(),
+    constraint calendly_bookings_unique unique (event_uuid, invitee_email)
+);
+
+-- Email statistics for A/B testing analytics
+create table if not exists email_stats (
+    id uuid primary key default gen_random_uuid(),
+    persona text not null,
+    persona_email text not null,
+    main_tech text not null,
+    variant_id text not null,
+    subject text,
+    smtp_inbox text,
+    send_count int default 0,
+    first_sent_at timestamptz default now(),
+    last_sent_at timestamptz default now(),
+    constraint email_stats_unique unique (persona_email, main_tech, variant_id)
+);
+
+-- Create indexes for performance
+create index if not exists idx_tech_scans_domain on tech_scans(domain);
+create index if not exists idx_tech_scans_emailed on tech_scans(emailed);
+create index if not exists idx_tech_scans_booked on tech_scans(booked);
+create index if not exists idx_domains_seen_domain on domains_seen(domain);
+```
+
+See `config/supabase_schema.sql` for the complete schema including analytics views and triggers.
+
+---
+
+### 2. Apify Setup (Google Places Scraping)
+
+Apify is used to scrape Google Places for business listings by category.
+
+#### Get Your Apify API Token
+
+1. Create an account at [apify.com](https://apify.com)
+2. Go to **Settings** > **Integrations**
+3. Copy your **API Token**
+
+#### How It Works
+
+The pipeline uses the `compass/crawler-google-places` actor to:
+- Search for businesses by category (e.g., "accountant", "dentist", "restaurant")
+- Extract business websites/domains
+- Rotate through 250 categories daily
+
+Set the environment variable:
+```bash
+APIFY_TOKEN=your_apify_api_token_here
+```
+
+---
+
+### 3. Zapmail/SMTP Setup
+
+The outreach worker sends emails through SMTP. You can use Zapmail (pre-warmed inboxes) or any SMTP provider.
+
+#### Exporting from Zapmail
+
+If using Zapmail for email deliverability:
+
+1. Log into [Zapmail](https://zapmail.app)
+2. Go to **Settings** > **Inboxes**
+3. Click **Export Configuration** for each inbox
+4. Combine into a JSON array
+
+#### SMTP Configuration Format
+
+Set the `SMTP_ACCOUNTS_JSON` environment variable with your inbox configurations:
+
+```json
+{
+  "inboxes": [
+    {
+      "email": "john@yourdomain.com",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "john@yourdomain.com",
+      "smtp_password": "your_app_password"
+    },
+    {
+      "email": "jane@yourdomain.com",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "jane@yourdomain.com",
+      "smtp_password": "your_app_password"
+    }
+  ]
+}
+```
+
+#### Gmail App Passwords
+
+If using Gmail:
+1. Enable 2-factor authentication on your Google account
+2. Go to Google Account > Security > App Passwords
+3. Generate an app password for "Mail"
+4. Use this password in `smtp_password`
+
+---
+
+### 4. Calendly Setup
+
+Calendly integration tracks which outreach emails led to booked meetings.
+
+#### Get Your Personal Access Token
+
+1. Log into [Calendly](https://calendly.com)
+2. Go to **Integrations** > **API & Webhooks**
+3. Click **Generate New Token**
+4. Copy the token (it won't be shown again)
+
+Set the environment variable:
+```bash
+CALENDLY_API_TOKEN=your_personal_access_token
+```
+
+---
+
+### 5. Company Profile & Personas
+
+All company details and persona information are configured via environment variables.
+
+#### Company Profile Variables
+
+These values appear in your generated outreach emails:
+
+```bash
+COMPANY_NAME=Your Company Name
+COMPANY_LOCATION=Your City, State
+COMPANY_HOURLY_RATE=$85/hr
+COMPANY_GITHUB=https://github.com/yourcompany/
+COMPANY_CALENDLY=https://calendly.com/your-link
+```
+
+#### Persona Map
+
+The `PERSONA_MAP_JSON` variable maps SMTP email addresses to persona details. Each persona has a name, role, and tone that affects the email style:
+
+```bash
+PERSONA_MAP_JSON='{
+  "john@yourdomain.com": {
+    "name": "John",
+    "role": "Systems Engineer",
+    "tone": "concise, technical, straight to the point"
+  },
+  "jane@yourdomain.com": {
+    "name": "Jane",
+    "role": "Technical Lead",
+    "tone": "structured, slightly more formal"
+  },
+  "alex@yourdomain.com": {
+    "name": "Alex",
+    "role": "Automation Specialist",
+    "tone": "friendly but still professional"
+  }
+}'
+```
+
+**Important**: The email addresses in `PERSONA_MAP_JSON` must match the emails in `SMTP_ACCOUNTS_JSON`.
+
+---
+
+### 6. Render Deployment
+
+Deploy to Render using the included `render.yaml` configuration.
+
+#### Steps
+
+1. **Fork this repository** to your GitHub account
+
+2. **Create a new Render account** at [render.com](https://render.com)
+
+3. **Connect your GitHub** and import the repository
+
+4. **Create a new Blueprint** and select `render.yaml`
+
+5. **Set environment variables** in the Render dashboard:
+
+   | Variable | Type | Description |
+   |----------|------|-------------|
+   | `SUPABASE_URL` | Secret | Your Supabase project URL |
+   | `SUPABASE_SERVICE_KEY` | Secret | Supabase service role key |
+   | `APIFY_TOKEN` | Secret | Apify API token |
+   | `SMTP_ACCOUNTS_JSON` | Secret | JSON with SMTP inbox configs |
+   | `CALENDLY_API_TOKEN` | Secret | Calendly Personal Access Token |
+   | `COMPANY_NAME` | Env Var | Your company name |
+   | `COMPANY_LOCATION` | Env Var | Your city/location |
+   | `COMPANY_HOURLY_RATE` | Env Var | Your hourly rate |
+   | `COMPANY_GITHUB` | Env Var | Your GitHub URL |
+   | `COMPANY_CALENDLY` | Env Var | Your Calendly booking link |
+   | `PERSONA_MAP_JSON` | Secret | Persona configurations |
+
+6. **Deploy!** The cron job runs daily at 6:00 AM UTC
+
+#### Local Development
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit with your values
+nano .env
+
+# Run all workers (same as Render cron)
+python daily_worker.py
+
+# Or run individual workers:
+python pipeline_worker.py    # Scan domains
+python outreach_worker.py    # Send emails
+python calendly_worker.py    # Sync Calendly bookings
+
+# Preview emails without sending
+python scripts/preview_email.py --tech Shopify --from john@yourdomain.com
+```
+
+---
+
+## Environment Variables Reference
+
+### Required Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key |
+| `APIFY_TOKEN` | Apify API token |
+| `SMTP_ACCOUNTS_JSON` | JSON with SMTP inbox configurations |
+| `COMPANY_NAME` | Your company name for emails |
+| `COMPANY_LOCATION` | Your city/location for emails |
+| `COMPANY_HOURLY_RATE` | Hourly rate shown in emails |
+| `COMPANY_CALENDLY` | Your Calendly booking link |
+
+### Optional Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COMPANY_GITHUB` | `""` | GitHub/portfolio URL |
+| `PERSONA_MAP_JSON` | `""` | JSON mapping emails to personas |
+| `CALENDLY_API_TOKEN` | `""` | Calendly token for booking sync |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `APIFY_MAX_PLACES` | `1000` | Max places per search |
+| `APIFY_ACTOR` | `compass/crawler-google-places` | Apify actor ID |
+| `OUTREACH_DAILY_LIMIT` | `500` | Max emails per day |
+| `OUTREACH_PER_INBOX_LIMIT` | `50` | Max emails per inbox |
+| `SMTP_SEND_DELAY_SECONDS` | `4` | Delay between emails |
+| `SCANNER_MAX_EMAIL_PAGES` | `10` | Max pages to crawl for emails |
+
+---
+
+## Architecture
+
+The system runs as a daily cron job (`daily_worker.py`) executing three workers sequentially:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Daily Pipeline (6:00 AM UTC)                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. PIPELINE WORKER (pipeline_worker.py)                        │
+│     ├── Scrape Google Places via Apify                          │
+│     ├── Extract & normalize domains                             │
+│     ├── Deduplicate against Supabase                            │
+│     ├── Scan each domain for tech stack                         │
+│     ├── Extract contact emails                                  │
+│     ├── Generate persona-based emails                           │
+│     └── Store results in Supabase                               │
+│                                                                  │
+│  2. OUTREACH WORKER (outreach_worker.py)                        │
+│     ├── Pull leads with tech + valid emails                     │
+│     ├── Rotate through SMTP inboxes                             │
+│     ├── Send personalized emails (350-500/day)                  │
+│     └── Mark leads as emailed                                   │
+│                                                                  │
+│  3. CALENDLY SYNC (calendly_worker.py)                          │
+│     ├── Fetch recent Calendly events                            │
+│     ├── Match invitee emails to leads                           │
+│     ├── Update booking status                                   │
+│     └── Save conversion analytics                               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Email Generation
+
+### Email Variants
 
 Each technology has 2-3 email variants for A/B testing:
 
 ```python
 EMAIL_VARIANTS = {
     "Shopify": [
-        {"id": "shopify_v1", "subject_template": "Shopify integration issue on {{domain}}?", ...},
-        {"id": "shopify_v2", "subject_template": "Quick Shopify improvement idea for {{domain}}", ...},
-        {"id": "shopify_v3", "subject_template": "Saw something in your Shopify setup", ...},
+        {"id": "shopify_v1", "subject_template": "Shopify integration issue on {{domain}}?"},
+        {"id": "shopify_v2", "subject_template": "Quick Shopify improvement idea for {{domain}}"},
+        {"id": "shopify_v3", "subject_template": "Saw something in your Shopify setup"},
     ],
     "Salesforce": [...],
     "WordPress": [...],
@@ -110,49 +479,21 @@ EMAIL_VARIANTS = {
 
 ### Supported Technologies with Variants
 
-- Shopify, WooCommerce, Magento (Ecommerce)
-- Salesforce, HubSpot (CRM/Marketing)
-- WordPress (CMS)
-- Stripe (Payments)
-- Klaviyo, Mailchimp (Email Marketing)
-- Google Analytics, GA4, Mixpanel (Analytics)
-- Segment (CDP)
-- Intercom (Live Chat)
-
-## Technology Scoring
-
-Technologies are scored by value/specialization (1-5 scale):
-
-| Score | Category | Examples |
-|-------|----------|----------|
-| 5 | Enterprise | Salesforce, HubSpot, Marketo, Segment, Magento, Pardot |
-| 4 | Ecommerce + Payments | Shopify, BigCommerce, Stripe, Klaviyo, Mixpanel |
-| 3 | Mainstream CMS + Marketing | WordPress, WooCommerce, Mailchimp, Intercom, Drift |
-| 2 | Infrastructure | AWS, Vercel, Netlify, Cloudflare |
-| 1 | Basic Analytics | Google Analytics, GA4, Heap, Hotjar |
-
-## Email Generation Output
-
-```json
-{
-  "subject": "Shopify integration issue on sample-shop.com?",
-  "body": "Hi — I'm Scott from CloseSpark in Richmond, VA...",
-  "main_tech": "Shopify",
-  "supporting_techs": ["Stripe", "Klaviyo"],
-  "persona": "Scott",
-  "persona_email": "scott@closespark.co",
-  "persona_role": "Systems Engineer",
-  "variant_id": "shopify_v1",
-  "domain": "sample-shop.com"
-}
-```
+- **Ecommerce**: Shopify, WooCommerce, Magento
+- **CRM/Marketing**: Salesforce, HubSpot
+- **CMS**: WordPress
+- **Payments**: Stripe
+- **Email Marketing**: Klaviyo, Mailchimp
+- **Analytics**: Google Analytics, GA4, Mixpanel
+- **CDP**: Segment
+- **Live Chat**: Intercom
 
 ### Example Generated Email
 
 ```
 Subject: Shopify integration issue on sample-shop.com?
 
-Hi — I'm Scott from CloseSpark in Richmond, VA.
+Hi — I'm John from Acme Consulting in New York, NY.
 
 I saw that sample-shop.com is running Shopify + Stripe, Klaviyo, and I specialize in short-term technical fixes for stacks like yours.
 
@@ -160,401 +501,43 @@ I saw that sample-shop.com is running Shopify + Stripe, Klaviyo, and I specializ
 • Payment + analytics events not lining up (GA4, Klaviyo, etc.)
 • Small automation gaps that slow down the team
 
-Hourly: $85/hr, strictly short-term — no long-term commitment.
+Hourly: $95/hr, strictly short-term — no long-term commitment.
 
 If it would help to have a specialist jump in, you can grab time here:
-https://calendly.com/closespark/technical-systems-consultation
+https://calendly.com/acme/consultation
 
-– Scott
-Systems Engineer, CloseSpark
-https://github.com/closespark/
+– John
+Systems Engineer, Acme Consulting
+https://github.com/acmeconsulting/
 ```
 
-## Render Deployment
+---
 
-This repository includes a complete Render deployment kit for running a fully automated daily pipeline.
+## Analytics & Tracking
 
-### Architecture
+### Per-Variant Analytics
 
-The system runs as a single daily cron job (`daily_worker.py`) that executes three workers sequentially:
-
-1. **Pipeline Worker** (`pipeline_worker.py`)
-   - Scrapes Google Places for one business category (rotates through 250 categories)
-   - Extracts and normalizes domains
-   - Deduplicates against Supabase history
-   - Scans each domain for technology stack
-   - Extracts non-generic contact emails
-   - Generates persona-based outreach emails with variant tracking
-   - Stores results in Supabase
-
-2. **Outreach Worker** (`outreach_worker.py`)
-   - Pulls leads with detected technologies and valid emails
-   - Rotates through SMTP inboxes (each inbox = different persona)
-   - Generates persona-specific emails based on detected tech stack
-   - Sends personalized outreach emails (350-500/day)
-   - Marks leads as emailed in Supabase
-
-3. **Calendly Sync Worker** (`calendly_worker.py`)
-   - Fetches recent scheduled events from Calendly API
-   - Matches invitee emails to leads in Supabase
-   - Updates lead records with booking status
-   - Saves booking records for conversion analytics
-
-### SMTP Configuration
-
-The `SMTP_ACCOUNTS_JSON` environment variable must use this format:
-
-```json
-{
-  "inboxes": [
-    {
-      "email": "scott@closespark.co",
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587,
-      "smtp_user": "scott@closespark.co",
-      "smtp_password": "your_app_password"
-    },
-    {
-      "email": "tracy@closespark.co",
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587,
-      "smtp_user": "tracy@closespark.co",
-      "smtp_password": "your_app_password"
-    },
-    {
-      "email": "willa@closespark.co",
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587,
-      "smtp_user": "willa@closespark.co",
-      "smtp_password": "your_app_password"
-    }
-  ]
-}
-```
-
-**Important**: The `email` field determines which persona sends the email. Use the exact email addresses shown above to match the persona map.
-
-### Supabase Setup
-
-Run the SQL schema in your Supabase SQL editor:
+The system tracks performance for each persona/technology/variant combination:
 
 ```sql
--- See config/supabase_schema.sql for full schema
-create table tech_scans (
-    id uuid primary key default gen_random_uuid(),
-    domain text not null,
-    technologies jsonb default '[]'::jsonb,
-    scored_technologies jsonb default '[]'::jsonb,
-    top_technology jsonb,
-    emails jsonb default '[]'::jsonb,
-    generated_email jsonb,  -- Contains persona, variant_id, subject, body
-    category text,
-    created_at timestamptz default now(),
-    error text,
-    emailed boolean,
-    emailed_at timestamptz
-);
-
-create table domains_seen (
-    domain text primary key,
-    category text,
-    first_seen timestamptz default now()
-);
-```
-
-### Environment Variables
-
-Set these in the Render dashboard:
-
-#### Required Variables
-| Variable | Description |
-|----------|-------------|
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key (secret) |
-| `APIFY_TOKEN` | Apify API token (secret) |
-| `SMTP_ACCOUNTS_JSON` | JSON object with "inboxes" array (secret) - see format above |
-| `CALENDLY_API_TOKEN` | Calendly Personal Access Token (secret) - for booking tracking |
-
-#### Optional Variables
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LOG_LEVEL` | `INFO` | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
-| `APIFY_MAX_PLACES` | `1000` | Max places to crawl per Google Places search |
-| `APIFY_ACTOR` | `compass/crawler-google-places` | Apify actor ID |
-| `APIFY_POLL_INTERVAL` | `30` | Seconds between Apify run status polls |
-| `APIFY_RUN_TIMEOUT` | `3600` | Maximum seconds to wait for Apify run (1 hour) |
-| `SUPABASE_TABLE` | `tech_scans` | Table for scan results |
-| `SUPABASE_DOMAIN_TABLE` | `domains_seen` | Table for domain tracking |
-| `CATEGORIES_FILE` | `config/categories-250.json` | Path to categories JSON |
-| `SCANNER_MAX_EMAIL_PAGES` | `10` | Max pages to crawl for emails per domain |
-| `SCANNER_DISABLE_EMAILS` | `false` | Set to 'true' to skip email extraction |
-| `CATEGORY_OVERRIDE` | - | Override the daily category selection |
-| `OUTREACH_TABLE` | `tech_scans` | Table with leads |
-| `OUTREACH_DAILY_LIMIT` | `500` | Max emails per day |
-| `OUTREACH_PER_INBOX_LIMIT` | `50` | Max emails per SMTP inbox |
-| `SMTP_SEND_DELAY_SECONDS` | `4` | Delay between emails in seconds |
-| `CALENDLY_SYNC_TABLE` | `tech_scans` | Table containing leads to match |
-| `CALENDLY_BOOKINGS_TABLE` | `calendly_bookings` | Table for storing booking records |
-| `CALENDLY_LOOKBACK_DAYS` | `7` | Days to look back for Calendly events |
-
-### Deploy to Render
-
-1. Fork this repository
-2. Connect to Render
-3. Import `render.yaml` (Infrastructure as Code)
-4. Set secret environment variables in Render dashboard
-5. Deploy!
-
-### Local Development
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your credentials
-nano .env
-
-# Run all workers sequentially (same as Render cron)
-python daily_worker.py
-
-# Or run individual workers separately:
-python pipeline_worker.py    # Scan domains
-python outreach_worker.py    # Send emails
-python calendly_worker.py    # Sync Calendly bookings
-
-# Test SMTP sending
-python scripts/smtp_test_send.py
-
-# Preview emails (QA tool)
-python scripts/preview_email.py --tech Shopify --from scott@closespark.co
-```
-
-## Email Preview CLI
-
-The preview CLI lets you generate and view outreach emails without sending them — useful for QA and testing different persona/tech/variant combinations.
-
-```bash
-# Basic preview with Shopify and Scott persona
-python scripts/preview_email.py --tech Shopify --from scott@closespark.co
-
-# Preview with custom domain and supporting techs
-python scripts/preview_email.py --tech HubSpot --from tracy@closespark.co --domain acme-corp.com --supporting Salesforce Stripe
-
-# Generate multiple variants for comparison
-python scripts/preview_email.py --tech Klaviyo --from willa@closespark.co --count 3
-
-# List all available personas and technologies
-python scripts/preview_email.py --list
-
-# Output as JSON
-python scripts/preview_email.py --tech Shopify --from scott@closespark.co --json
-```
-
-## Per-Variant Analytics
-
-The system automatically tracks performance metrics for each combination of persona, technology, and variant. This data is stored in the `email_stats` table and populated by a Supabase trigger when emails are marked as sent.
-
-### Tables
-
-| Table | Purpose |
-|-------|---------|
-| `email_stats` | Aggregate counters per persona/tech/variant combo |
-| `domain_email_history` | Per-domain history for variant suppression |
-| `calendly_bookings` | Booking records with matched lead metadata |
-
-### Analytics Views
-
-```sql
--- Top performing variants by send count
+-- Top performing variants
 SELECT * FROM v_top_variants LIMIT 10;
 
--- Persona performance summary
+-- Persona performance
 SELECT * FROM v_persona_stats;
 
--- Tech performance summary
-SELECT * FROM v_tech_stats;
-
--- Conversion funnel (emails sent -> bookings)
+-- Conversion funnel (emails → bookings)
 SELECT * FROM v_conversion_funnel ORDER BY conversion_rate_pct DESC;
-
--- Bookings by persona
-SELECT * FROM v_persona_conversions;
-
--- Bookings by variant
-SELECT * FROM v_variant_conversions;
-
--- Bookings by technology
-SELECT * FROM v_tech_conversions;
 ```
 
-## Calendly Integration
+### Variant Suppression
 
-The system integrates with Calendly to track which outreach emails led to booked meetings. This enables end-to-end conversion analytics by persona, email variant, and technology.
+The system avoids sending repetitive emails:
+- Don't send the same variant twice to a domain
+- Don't send the same persona twice to a domain
+- Prefer new combinations first
 
-### How It Works
-
-1. **Calendly Worker** (`calendly_worker.py`) - Runs daily at 8:00 PM UTC
-   - Fetches recent scheduled events from Calendly API
-   - Extracts invitee email addresses
-   - Matches invitee emails against leads in `tech_scans` table
-   - Updates matched leads with booking status
-   - Saves booking records to `calendly_bookings` table with full metadata
-
-2. **Booking Records** store:
-   - Invitee email and name
-   - Event details (name, start/end time, status)
-   - Matched lead ID and domain
-   - Persona, variant_id, and main_tech from the outreach email
-
-### Setup
-
-1. **Get Calendly Personal Access Token**:
-   - Go to [Calendly Integrations](https://calendly.com/integrations/api_webhooks)
-   - Generate a Personal Access Token
-   - Copy the token (it won't be shown again)
-
-2. **Set Environment Variable**:
-   ```bash
-   CALENDLY_API_TOKEN=your_personal_access_token
-   ```
-
-3. **Run Supabase Schema Migration**:
-   ```sql
-   -- Add booking fields to tech_scans table
-   ALTER TABLE tech_scans ADD COLUMN IF NOT EXISTS booked boolean;
-   ALTER TABLE tech_scans ADD COLUMN IF NOT EXISTS booked_at timestamptz;
-   ALTER TABLE tech_scans ADD COLUMN IF NOT EXISTS calendly_event_uri text;
-   ALTER TABLE tech_scans ADD COLUMN IF NOT EXISTS calendly_invitee_email text;
-   ALTER TABLE tech_scans ADD COLUMN IF NOT EXISTS calendly_event_name text;
-   
-   -- Create calendly_bookings table (see config/supabase_schema.sql for full schema)
-   ```
-
-### Analytics Queries
-
-```sql
--- Which persona drives the most bookings?
-SELECT persona, total_bookings, matched_bookings 
-FROM v_persona_conversions 
-ORDER BY total_bookings DESC;
-
--- Which email variant has the best conversion rate?
-SELECT variant_id, main_tech, persona, total_bookings
-FROM v_variant_conversions 
-WHERE total_bookings > 0
-ORDER BY total_bookings DESC;
-
--- Full conversion funnel by persona/variant
-SELECT 
-    persona,
-    variant_id,
-    emails_sent,
-    bookings,
-    conversion_rate_pct
-FROM v_conversion_funnel
-WHERE emails_sent > 10
-ORDER BY conversion_rate_pct DESC;
-
--- Technology performance (which tech stacks book most?)
-SELECT main_tech, total_bookings
-FROM v_tech_conversions
-ORDER BY total_bookings DESC;
-```
-
-### Python Usage
-
-```python
-from calendly_sync import sync_calendly_bookings, get_booking_analytics
-
-# Run sync manually
-stats = sync_calendly_bookings(
-    calendly_token="your_token",
-    supabase_url="your_url",
-    supabase_key="your_key",
-    lookback_days=7,
-)
-print(f"Matched {stats['leads_matched']} leads with bookings")
-
-# Get analytics breakdown
-analytics = get_booking_analytics(
-    supabase_url="your_url",
-    supabase_key="your_key",
-)
-print(f"Total bookings: {analytics['total_bookings']}")
-print(f"By persona: {analytics['by_persona']}")
-print(f"By variant: {analytics['by_variant']}")
-print(f"By tech: {analytics['by_tech']}")
-```
-
-## Variant Suppression
-
-The system includes logic to avoid sending repetitive emails to the same domain:
-
-- **Don't send the same variant twice** to the same domain
-- **Don't send the same persona twice** to the same domain
-- **Prefer new combinations first** before recycling
-
-### Usage
-
-```python
-from hubspot_scanner import generate_persona_outreach_email
-
-# Suppress previously used variants
-email = generate_persona_outreach_email(
-    domain="example.com",
-    main_tech="Shopify",
-    supporting_techs=["Stripe"],
-    from_email="scott@closespark.co",
-    domain_history={
-        "used_variant_ids": ["shopify_v1", "shopify_v2"],  # Will select shopify_v3
-    },
-)
-```
-
-### Helper Functions
-
-```python
-from hubspot_scanner import (
-    get_variant_for_tech,
-    select_variant_with_suppression,
-    get_unused_persona_for_domain,
-)
-
-# Get a variant excluding certain IDs
-variant = get_variant_for_tech("Shopify", exclude_variant_ids=["shopify_v1"])
-
-# Select variant with full suppression logic
-variant = select_variant_with_suppression(
-    main_tech="Shopify",
-    from_email="scott@closespark.co",
-    domain_history={"used_variant_ids": ["shopify_v1", "shopify_v2"]},
-)
-
-# Find an unused persona for a domain
-persona = get_unused_persona_for_domain(
-    domain="example.com",
-    available_personas=["scott@closespark.co", "tracy@closespark.co", "willa@closespark.co"],
-    used_personas=["scott@closespark.co"],
-)
-```
-
-## Email Filtering
-
-When scanning sites, the scanner crawls for email addresses and automatically filters out non-valuable contacts:
-
-### Generic Email Prefixes
-- info@, support@, admin@
-- hello@, sales@, contact@
-- help@, noreply@, webmaster@
-- office@, team@, general@
-
-### Disposable/Honeypot Domains
-The scanner filters out emails from disposable and honeypot email services (e.g., mailinator.com, guerrillamail.com, tempmail.net). The blocklist contains 5,500+ domains from multiple community-maintained sources.
-
-To update the blocklist:
-```bash
-python scripts/update_disposable_blocklist.py
-```
+---
 
 ## CLI Reference
 
@@ -574,48 +557,74 @@ Options:
   -v, --version         Show version
 ```
 
+### Email Preview CLI
+
+```bash
+# Preview email without sending
+python scripts/preview_email.py --tech Shopify --from john@yourdomain.com
+
+# Preview with custom domain
+python scripts/preview_email.py --tech HubSpot --from john@yourdomain.com --domain acme.com
+
+# Generate multiple variants
+python scripts/preview_email.py --tech Klaviyo --from john@yourdomain.com --count 3
+
+# List available personas and technologies
+python scripts/preview_email.py --list
+```
+
+---
+
 ## Examples
 
-See the `examples/` directory for more usage examples:
+See the `examples/` directory:
 
 - `basic_usage.py` - Single domain scanning
-- `batch_scan.py` - Multiple domain scanning with progress
-- `category_scraper.py` - Scrape Google Places by business category using Apify
-- `daily_pipeline.py` - Full automated lead generation pipeline
-- `tech_scanner_usage.py` - Technology scanner with email generation examples
+- `batch_scan.py` - Multiple domain scanning
+- `category_scraper.py` - Google Places scraping via Apify
+- `daily_pipeline.py` - Full automated pipeline
+- `tech_scanner_usage.py` - Technology scanner examples
 - `domains.txt` - Sample domain list
 - `sample_output.json` - Example output format
 
+---
+
 ## Supported Technologies
 
-**Marketing & Sales:**
-- CRM: Salesforce, Zoho, Pipedrive
-- Marketing Automation: HubSpot, Marketo, Pardot, ActiveCampaign
-- Email: Klaviyo, Mailchimp, SendGrid
-- Live Chat: Intercom, Drift, Zendesk Chat, Freshchat
+### Marketing & Sales
+- **CRM**: Salesforce, Zoho, Pipedrive
+- **Marketing Automation**: HubSpot, Marketo, Pardot, ActiveCampaign
+- **Email**: Klaviyo, Mailchimp, SendGrid
+- **Live Chat**: Intercom, Drift, Zendesk Chat, Freshchat
 
-**Ecommerce:**
-- Platforms: Shopify, WooCommerce, Magento, BigCommerce
-- Payments: Stripe, PayPal, Braintree, Square
+### Ecommerce
+- **Platforms**: Shopify, WooCommerce, Magento, BigCommerce
+- **Payments**: Stripe, PayPal, Braintree, Square
 
-**Analytics & Testing:**
-- Analytics: Google Analytics, Mixpanel, Amplitude, Heap, Hotjar
-- A/B Testing: Optimizely, VWO, Google Optimize
-- CDP: Segment
+### Analytics & Testing
+- **Analytics**: Google Analytics, Mixpanel, Amplitude, Heap, Hotjar
+- **A/B Testing**: Optimizely, VWO, Google Optimize
+- **CDP**: Segment
 
-**Infrastructure:**
-- CMS: WordPress, Webflow
-- Hosting: AWS, Vercel, Netlify, Cloudflare
+### Infrastructure
+- **CMS**: WordPress, Webflow
+- **Hosting**: AWS, Vercel, Netlify, Cloudflare
 
-## Use Cases
+---
 
-- **Lead Generation**: Identify businesses using specific technologies and extract contact emails
-- **Technology Profiling**: Discover the complete tech stack of target companies
-- **Competitive Analysis**: Survey technology adoption across industries or competitors
-- **Partnership Targeting**: Find companies using complementary technologies
-- **RevOps Workflows**: Automate technology-based lead qualification
-- **Automated Outreach**: Daily pipeline for discovering and contacting technology-matched prospects
-- **A/B Testing**: Track which email variants perform best with variant_id metadata
+## Technology Scoring
+
+Technologies are scored 1-5 based on value/specialization:
+
+| Score | Category | Examples |
+|-------|----------|----------|
+| 5 | Enterprise | Salesforce, HubSpot, Marketo, Segment |
+| 4 | Ecommerce + Payments | Shopify, BigCommerce, Stripe, Klaviyo |
+| 3 | Mainstream CMS | WordPress, WooCommerce, Mailchimp |
+| 2 | Infrastructure | AWS, Vercel, Netlify, Cloudflare |
+| 1 | Basic Analytics | Google Analytics, GA4, Heap, Hotjar |
+
+---
 
 ## Requirements
 
@@ -623,9 +632,9 @@ See the `examples/` directory for more usage examples:
 - requests
 - beautifulsoup4
 - lxml
-- apify-client (for Google Places scraping)
-- supabase (for data persistence)
-- python-dotenv (for local development)
+- apify-client
+- supabase
+- python-dotenv
 
 ## License
 

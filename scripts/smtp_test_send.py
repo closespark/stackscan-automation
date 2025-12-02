@@ -25,8 +25,8 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 
-# Import the new persona-based email generator from the hubspot_scanner package
-from hubspot_scanner import generate_persona_outreach_email, get_persona_for_email
+# Import the new persona-based email generator from the stackscanner package
+from stackscanner import generate_persona_outreach_email, get_persona_for_email
 
 
 TEST_RECIPIENT = os.getenv("SMTP_TEST_RECIPIENT", "christabb@gmail.com")

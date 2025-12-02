@@ -10,7 +10,7 @@ This example shows how to:
 
 import json
 
-from hubspot_scanner import (
+from stackscanner import (
     scan_technologies,
     scan_technologies_batch,
     TechDetector,

@@ -42,7 +42,7 @@ from datetime import date
 from apify_client import ApifyClient
 from supabase import create_client
 
-from hubspot_scanner import scan_technologies
+from stackscanner import scan_technologies
 
 
 # ---------- LOGGING SETUP ----------
