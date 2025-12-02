@@ -312,6 +312,106 @@ python outreach_worker.py
 
 # Test SMTP sending
 python scripts/smtp_test_send.py
+
+# Preview emails (QA tool)
+python scripts/preview_email.py --tech Shopify --from scott@closespark.co
+```
+
+## Email Preview CLI
+
+The preview CLI lets you generate and view outreach emails without sending them — useful for QA and testing different persona/tech/variant combinations.
+
+```bash
+# Basic preview with Shopify and Scott persona
+python scripts/preview_email.py --tech Shopify --from scott@closespark.co
+
+# Preview with custom domain and supporting techs
+python scripts/preview_email.py --tech HubSpot --from tracy@closespark.co --domain acme-corp.com --supporting Salesforce Stripe
+
+# Generate multiple variants for comparison
+python scripts/preview_email.py --tech Klaviyo --from willa@closespark.co --count 3
+
+# List all available personas and technologies
+python scripts/preview_email.py --list
+
+# Output as JSON
+python scripts/preview_email.py --tech Shopify --from scott@closespark.co --json
+```
+
+## Per-Variant Analytics
+
+The system automatically tracks performance metrics for each combination of persona, technology, and variant. This data is stored in the `email_stats` table and populated by a Supabase trigger when emails are marked as sent.
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `email_stats` | Aggregate counters per persona/tech/variant combo |
+| `domain_email_history` | Per-domain history for variant suppression |
+
+### Analytics Views
+
+```sql
+-- Top performing variants by send count
+SELECT * FROM v_top_variants LIMIT 10;
+
+-- Persona performance summary
+SELECT * FROM v_persona_stats;
+
+-- Tech performance summary
+SELECT * FROM v_tech_stats;
+```
+
+## Variant Suppression
+
+The system includes logic to avoid sending repetitive emails to the same domain:
+
+- **Don't send the same variant twice** to the same domain
+- **Don't send the same persona twice** to the same domain
+- **Prefer new combinations first** before recycling
+
+### Usage
+
+```python
+from hubspot_scanner import generate_persona_outreach_email
+
+# Suppress previously used variants
+email = generate_persona_outreach_email(
+    domain="example.com",
+    main_tech="Shopify",
+    supporting_techs=["Stripe"],
+    from_email="scott@closespark.co",
+    domain_history={
+        "used_variant_ids": ["shopify_v1", "shopify_v2"],  # Will select shopify_v3
+    },
+)
+```
+
+### Helper Functions
+
+```python
+from hubspot_scanner import (
+    get_variant_for_tech,
+    select_variant_with_suppression,
+    get_unused_persona_for_domain,
+)
+
+# Get a variant excluding certain IDs
+variant = get_variant_for_tech("Shopify", exclude_variant_ids=["shopify_v1"])
+
+# Select variant with full suppression logic
+variant = select_variant_with_suppression(
+    main_tech="Shopify",
+    from_email="scott@closespark.co",
+    domain_history={"used_variant_ids": ["shopify_v1", "shopify_v2"]},
+)
+
+# Find an unused persona for a domain
+persona = get_unused_persona_for_domain(
+    domain="example.com",
+    available_personas=["scott@closespark.co", "tracy@closespark.co", "willa@closespark.co"],
+    used_personas=["scott@closespark.co"],
+)
 ```
 
 ## Email Filtering

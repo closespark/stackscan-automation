@@ -43,6 +43,9 @@ from .email_generator import (
     get_variant_for_tech,
     generate_persona_outreach_email,
     generate_outreach_email_with_persona,
+    # NEW: Variant suppression
+    get_unused_persona_for_domain,
+    select_variant_with_suppression,
 )
 from .tech_scanner import (
     scan_technologies,
@@ -94,6 +97,9 @@ __all__ = [
     "get_variant_for_tech",
     "generate_persona_outreach_email",
     "generate_outreach_email_with_persona",
+    # NEW: Variant suppression
+    "get_unused_persona_for_domain",
+    "select_variant_with_suppression",
     # Unified scanner
     "scan_technologies",
     "scan_technologies_batch",

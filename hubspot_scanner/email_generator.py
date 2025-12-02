@@ -1407,12 +1407,13 @@ def get_persona_for_email(from_email: str) -> dict[str, str]:
     }
 
 
-def get_variant_for_tech(main_tech: str) -> dict[str, Any]:
+def get_variant_for_tech(main_tech: str, exclude_variant_ids: list[str] | None = None) -> dict[str, Any]:
     """
-    Get a random variant for a given MainTech.
+    Get a random variant for a given MainTech, optionally excluding certain variants.
     
     Args:
         main_tech: The main technology name
+        exclude_variant_ids: List of variant IDs to exclude (for suppression)
         
     Returns:
         Variant dictionary with id, subject_template, and bullets
@@ -1429,7 +1430,73 @@ def get_variant_for_tech(main_tech: str) -> dict[str, Any]:
                 "Data sync and tracking gaps",
             ],
         }
-    return random.choice(variants)
+    
+    # Start with all variants, then filter if exclusions specified
+    available_variants = variants
+    if exclude_variant_ids:
+        filtered = [v for v in variants if v["id"] not in exclude_variant_ids]
+        # Only use filtered list if it's not empty (otherwise reset to all)
+        if filtered:
+            available_variants = filtered
+    
+    return random.choice(available_variants)
+
+
+def get_unused_persona_for_domain(
+    domain: str,
+    available_personas: list[str],
+    used_personas: list[str] | None = None,
+) -> str | None:
+    """
+    Get a persona email that hasn't been used for this domain.
+    
+    Args:
+        domain: The target domain
+        available_personas: List of available persona emails
+        used_personas: List of persona emails already used for this domain
+        
+    Returns:
+        A persona email that hasn't been used, or None if all have been used
+    """
+    if not used_personas:
+        return available_personas[0] if available_personas else None
+    
+    unused = [p for p in available_personas if p not in used_personas]
+    if unused:
+        return unused[0]
+    
+    # All personas have been used - return None to signal rotation complete
+    return None
+
+
+def select_variant_with_suppression(
+    main_tech: str,
+    from_email: str,
+    domain_history: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Select a variant while avoiding previously used combinations for this domain.
+    
+    This implements variant suppression logic:
+    - Don't send the same variant twice to the same domain
+    - Don't send the same persona twice to the same domain
+    - Prefer new combinations first
+    
+    Args:
+        main_tech: The main technology name
+        from_email: The sender email (persona)
+        domain_history: Optional dict with 'used_variant_ids' and 'used_personas' lists
+        
+    Returns:
+        Selected variant dictionary
+    """
+    exclude_variant_ids = []
+    
+    if domain_history:
+        # Get previously used variant IDs for this domain
+        exclude_variant_ids = domain_history.get("used_variant_ids", [])
+    
+    return get_variant_for_tech(main_tech, exclude_variant_ids=exclude_variant_ids)
 
 
 def get_subject_for_persona_tech(
@@ -1570,13 +1637,14 @@ def generate_persona_outreach_email(
     main_tech: str,
     supporting_techs: list[str],
     from_email: str,
+    domain_history: dict[str, Any] | None = None,
 ) -> PersonaEmail:
     """
     Generate a complete persona-based outreach email.
     
     This is the new primary email generation function that:
     - Takes main_tech, supporting_techs, domain, and persona (from_email) as inputs
-    - Chooses one variant for that main_tech (random)
+    - Chooses one variant for that main_tech (random, with optional suppression)
     - Returns subject, body, and metadata including variant_id
     
     Args:
@@ -1584,6 +1652,7 @@ def generate_persona_outreach_email(
         main_tech: The main/top technology detected
         supporting_techs: List of other detected technologies
         from_email: The SMTP sender email address (determines persona)
+        domain_history: Optional dict with 'used_variant_ids' for suppression
         
     Returns:
         PersonaEmail with subject, body, and full metadata
@@ -1591,8 +1660,11 @@ def generate_persona_outreach_email(
     # Get persona for this email address
     persona = get_persona_for_email(from_email)
     
-    # Get a random variant for this tech
-    variant = get_variant_for_tech(main_tech)
+    # Get a variant for this tech (with optional suppression)
+    if domain_history:
+        variant = select_variant_with_suppression(main_tech, from_email, domain_history)
+    else:
+        variant = get_variant_for_tech(main_tech)
     
     # Generate subject
     subject = get_subject_for_persona_tech(from_email, main_tech, domain)
