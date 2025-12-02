@@ -22,8 +22,8 @@ Wappalyzer-style domain scanner that detects **40+ technologies** across busines
 
 ```bash
 # Clone the repository
-git clone https://github.com/inevitablesale/hubspot-presence-scanner.git
-cd hubspot-presence-scanner
+git clone https://github.com/inevitablesale/stackscan-automation.git
+cd stackscan-automation
 
 # Install dependencies
 pip install -r requirements.txt
@@ -180,6 +180,7 @@ See the `examples/` directory for more usage examples:
 - `batch_scan.py` - Multiple domain scanning with progress
 - `category_scraper.py` - Scrape Google Places by business category using Apify
 - `daily_pipeline.py` - Full automated lead generation pipeline
+- `tech_scanner_usage.py` - Technology scanner with email generation examples
 - `zapmail_config.sample.json` - Sample Zapmail inbox configuration
 - `domains.txt` - Sample domain list
 - `sample_output.json` - Example output format
@@ -274,13 +275,13 @@ The outreach email is intentionally simple, friendly, and relevant to the techno
 **Default Outreach Template (`templates/outreach_email.txt`):**
 
 ```
-Hey there,
+Hey there!
 
-I was reviewing {{domain}} and noticed your tech stack — specifically some tracking and automation components that usually indicate there may be hidden optimization opportunities.
+I was reviewing {{domain}} and noticed something interesting.
 
-I run a daily Tech Stack Scanner that identifies technical gaps, workflow friction points, and automation leaks. If you'd like, I can share a quick breakdown of what the scanner found for your domain along with a couple of improvements that typically move the needle fast.
+We run a daily scanner that looks at HubSpot implementations across local businesses. If you're open to it, I can share what we found and some suggestions that usually improve leadflow + automations within days.
 
-No pressure at all — happy to point you in the right direction.
+Let me know if you'd like a quick breakdown.
 
 – Chris
 ```
