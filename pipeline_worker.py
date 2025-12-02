@@ -434,11 +434,11 @@ def save_scan_result(supabase, result: dict, category: str) -> None:
     """
     row = {
         "domain": result["domain"],
+        "category": category,
         "technologies": result.get("technologies", []),
         "scored_technologies": result.get("scored_technologies", []),
         "top_technology": result.get("top_technology"),
-        "generated_email": result.get("generated_email"),
-        "category": category,
+        "emails": result.get("emails", []),
         "error": result.get("error"),
     }
     supabase.table(SUPABASE_TABLE).insert(row).execute()
@@ -512,7 +512,7 @@ def run_technology_scans(supabase, domains: list[str], category: str) -> list[di
                 "technologies": [],
                 "scored_technologies": [],
                 "top_technology": None,
-                "generated_email": None,
+                "emails": [],
                 "error": str(e),
             }
             save_scan_result(supabase, err_result, category)

@@ -16,6 +16,7 @@ import requests
 from .tech_detector import TechDetector, TechDetectionResult
 from .tech_scorer import score_technologies, get_highest_value_tech, to_dict
 from .email_generator import generate_outreach_email, GeneratedEmail
+from .email_extractor import extract_emails_from_html
 
 
 DEFAULT_TIMEOUT = 10
@@ -33,6 +34,7 @@ class TechScanResult:
     technologies: list[str] = field(default_factory=list)
     scored_technologies: list[dict[str, Any]] = field(default_factory=list)
     top_technology: dict[str, Any] | None = None
+    emails: list[str] = field(default_factory=list)
     generated_email: dict[str, Any] | None = None
     error: str | None = None
 
@@ -43,6 +45,7 @@ class TechScanResult:
             "technologies": self.technologies,
             "scored_technologies": self.scored_technologies,
             "top_technology": self.top_technology,
+            "emails": self.emails,
             "generated_email": self.generated_email,
             "error": self.error,
         }
@@ -158,10 +161,13 @@ def scan_technologies(
     detection_result = detector.detect(domain, html_content, headers)
 
     if not detection_result.technologies:
+        # Extract emails even if no technologies detected
+        extracted_emails = sorted(extract_emails_from_html(html_content, domain))
         return TechScanResult(
             domain=domain,
             technologies=[],
             scored_technologies=[],
+            emails=extracted_emails,
         )
 
     # Score technologies
@@ -171,6 +177,9 @@ def scan_technologies(
     # Get top technology
     top_tech = scored[0] if scored else None
     top_tech_dict = to_dict(top_tech) if top_tech else None
+
+    # Extract emails from the page
+    extracted_emails = sorted(extract_emails_from_html(html_content, domain))
 
     # Generate email if requested
     email_dict = None
@@ -188,6 +197,7 @@ def scan_technologies(
         technologies=detection_result.technologies,
         scored_technologies=scored_dicts,
         top_technology=top_tech_dict,
+        emails=extracted_emails,
         generated_email=email_dict,
     )
 
