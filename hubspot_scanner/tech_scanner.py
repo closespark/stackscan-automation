@@ -8,6 +8,7 @@ Combines:
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,7 +17,10 @@ import requests
 from .tech_detector import TechDetector, TechDetectionResult
 from .tech_scorer import score_technologies, get_highest_value_tech, to_dict
 from .email_generator import generate_outreach_email, GeneratedEmail
-from .email_extractor import extract_emails_from_html
+from .email_extractor import crawl_for_emails
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_TIMEOUT = 10
@@ -177,8 +181,16 @@ def scan_technologies(
             scored_technologies=[],
         )
 
-    # Extract emails only when technologies are detected
-    extracted_emails = sorted(extract_emails_from_html(html_content, domain))
+    # Extract emails (crawls multiple pages and filters out generic/disposable)
+    logger.info(f"Email extractor: crawling {domain} for emails...")
+    extracted_emails = sorted(crawl_for_emails(
+        base_url=url,
+        domain=domain,
+        initial_html=html_content,
+        timeout=timeout,
+        user_agent=user_agent,
+    ))
+    logger.info(f"Email extractor: {len(extracted_emails)} emails found for {domain}")
 
     # Score technologies
     scored = score_technologies(detection_result.technologies)
