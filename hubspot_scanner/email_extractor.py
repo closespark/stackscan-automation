@@ -94,6 +94,14 @@ GENERIC_EMAIL_PREFIXES = frozenset([
     "general",
 ])
 
+# Invalid/fake email domains to exclude
+INVALID_DOMAINS = frozenset([
+    "example.com",
+    "example.org",
+    "test.com",
+    "domain.com",
+])
+
 # Email regex pattern
 EMAIL_PATTERN = re.compile(
     r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
@@ -150,9 +158,9 @@ def is_valid_email(email: str, domain: str) -> bool:
         return False
 
     # Skip obviously fake or example emails
-    invalid_domains = ["example.com", "example.org", "test.com", "domain.com"]
-    email_domain = email_lower.split("@")[1] if "@" in email_lower else ""
-    if email_domain in invalid_domains:
+    email_parts = email_lower.split("@")
+    email_domain = email_parts[1] if len(email_parts) == 2 else ""
+    if email_domain in INVALID_DOMAINS:
         return False
 
     # Skip image and file extensions mistakenly captured
@@ -178,18 +186,44 @@ def extract_emails_from_html(html_content: str, domain: str) -> Set[str]:
     # Find all email patterns
     found_emails = EMAIL_PATTERN.findall(html_content)
 
-    for email in found_emails:
-        if is_valid_email(email, domain):
-            emails.add(email.lower())
-
     # Also look for mailto: links
     soup = BeautifulSoup(html_content, "lxml")
     for link in soup.find_all("a", href=True):
         href = link.get("href", "")
         if href.startswith("mailto:"):
             email = href.replace("mailto:", "").split("?")[0].strip()
-            if email and is_valid_email(email, domain):
-                emails.add(email.lower())
+            if email:
+                found_emails.append(email)
+
+    # Process all found emails with detailed logging
+    for email in found_emails:
+        email_lower = email.lower()
+
+        # Check for generic email
+        if is_generic_email(email_lower):
+            logger.debug(f"Email extractor: filtered generic email: {email_lower}")
+            continue
+
+        # Check for disposable/honeypot email
+        if is_disposable_email(email_lower):
+            logger.debug(f"Email extractor: filtered disposable/honeypot: {email_lower}")
+            continue
+
+        # Check for invalid domains
+        email_parts = email_lower.split("@")
+        if len(email_parts) == 2:
+            email_domain = email_parts[1]
+            if email_domain in INVALID_DOMAINS:
+                logger.debug(f"Email extractor: filtered invalid domain: {email_lower}")
+                continue
+            if email_domain.endswith((".png", ".jpg", ".gif", ".svg", ".css", ".js")):
+                logger.debug(f"Email extractor: filtered file extension: {email_lower}")
+                continue
+
+        # Email passed all filters
+        if email_lower not in emails:
+            logger.info(f"Email extractor: accepted email: {email_lower}")
+            emails.add(email_lower)
 
     return emails
 
@@ -306,4 +340,5 @@ def crawl_for_emails(
             # Skip pages that fail to load
             continue
 
+    logger.info(f"Email extractor: FINAL accepted emails for {domain}: {sorted(all_emails)}")
     return all_emails
