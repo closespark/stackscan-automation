@@ -4,7 +4,18 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 
-Wappalyzer-style domain scanner that detects **40+ technologies** across business websites — including CRM systems, marketing automation, ecommerce platforms, payment processors, analytics tools, and more. Scores each technology by value and generates **persona-based outreach emails** with variant tracking. Built for consultants, revops teams, and lead generation workflows.
+**Automated lead generation pipeline for technical consultants and RevOps teams.**
+
+Point this at any business category (dentists, accountants, e-commerce stores, etc.) and it will:
+1. **Scrape Google Places** for business websites in your target category
+2. **Scan each website's tech stack** — detecting 40+ technologies including CRMs (Salesforce, HubSpot), ecommerce platforms (Shopify, WooCommerce), payment processors (Stripe, PayPal), marketing automation (Klaviyo, Mailchimp), analytics tools (Mixpanel, Segment), and more
+3. **Score each technology** by value (1-5) to prioritize high-value leads
+4. **Extract contact emails** from the website (filtering out generic addresses like info@, support@)
+5. **Generate personalized outreach emails** based on their specific tech stack, using configurable personas and multiple email variants for A/B testing
+6. **Send emails automatically** through your SMTP inboxes with throttling and rotation
+7. **Track conversions** by syncing Calendly bookings back to your leads
+
+The entire pipeline runs daily as a cron job. Configure it once, deploy to Render, and let it generate qualified technical leads while you sleep.
 
 > **Note**: This project is in **beta** status. The core scanning functionality is stable and actively used in production for lead generation workflows.
 
@@ -308,6 +319,8 @@ COMPANY_GITHUB=https://github.com/yourcompany/
 COMPANY_CALENDLY=https://calendly.com/your-link
 ```
 
+> **Note**: For `COMPANY_HOURLY_RATE`, include the full formatted string exactly as you want it to appear in emails (e.g., `$85/hr`, `$125/hr`, or `€100/hr`). This value is inserted directly into outreach emails without modification.
+
 #### Persona Map
 
 The `PERSONA_MAP_JSON` variable maps SMTP email addresses to persona details. Each persona has a name, role, and tone that affects the email style:
@@ -361,7 +374,7 @@ Deploy to Render using the included `render.yaml` configuration.
    | `CALENDLY_API_TOKEN` | Secret | Calendly Personal Access Token |
    | `COMPANY_NAME` | Env Var | Your company name |
    | `COMPANY_LOCATION` | Env Var | Your city/location |
-   | `COMPANY_HOURLY_RATE` | Env Var | Your hourly rate |
+   | `COMPANY_HOURLY_RATE` | Env Var | Your hourly rate (include `$` sign, e.g., `$85/hr`) |
    | `COMPANY_GITHUB` | Env Var | Your GitHub URL |
    | `COMPANY_CALENDLY` | Env Var | Your Calendly booking link |
    | `PERSONA_MAP_JSON` | Secret | Persona configurations |
@@ -403,7 +416,7 @@ python scripts/preview_email.py --tech Shopify --from john@yourdomain.com
 | `SMTP_ACCOUNTS_JSON` | JSON with SMTP inbox configurations |
 | `COMPANY_NAME` | Your company name for emails |
 | `COMPANY_LOCATION` | Your city/location for emails |
-| `COMPANY_HOURLY_RATE` | Hourly rate shown in emails |
+| `COMPANY_HOURLY_RATE` | Hourly rate shown in emails (include currency symbol, e.g., `$85/hr`) |
 | `COMPANY_CALENDLY` | Your Calendly booking link |
 
 ### Optional Variables
