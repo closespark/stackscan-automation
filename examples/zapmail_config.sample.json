@@ -1,30 +1,28 @@
 {
-  "description": "Sample Zapmail inbox configuration file",
-  "note": "Replace with your actual Zapmail pre-warmed inbox credentials",
+  "description": "Sample SMTP inbox configuration for CloseSpark outreach",
+  "note": "Replace smtp_password with your actual Gmail app passwords",
+  "format_note": "The 'email' field determines which persona sends the email (Scott, Tracy, or Willa)",
   "inboxes": [
     {
-      "email": "sender1@warmeddomain.com",
+      "email": "scott@closespark.co",
       "smtp_host": "smtp.gmail.com",
       "smtp_port": 587,
-      "smtp_user": "sender1@warmeddomain.com",
-      "smtp_password": "your_app_password_here",
-      "daily_limit": 40
+      "smtp_user": "scott@closespark.co",
+      "smtp_password": "your_app_password_here"
     },
     {
-      "email": "sender2@warmeddomain.com",
+      "email": "tracy@closespark.co",
       "smtp_host": "smtp.gmail.com",
       "smtp_port": 587,
-      "smtp_user": "sender2@warmeddomain.com",
-      "smtp_password": "your_app_password_here",
-      "daily_limit": 40
+      "smtp_user": "tracy@closespark.co",
+      "smtp_password": "your_app_password_here"
     },
     {
-      "email": "sender3@warmeddomain.com",
+      "email": "willa@closespark.co",
       "smtp_host": "smtp.gmail.com",
       "smtp_port": 587,
-      "smtp_user": "sender3@warmeddomain.com",
-      "smtp_password": "your_app_password_here",
-      "daily_limit": 40
+      "smtp_user": "willa@closespark.co",
+      "smtp_password": "your_app_password_here"
     }
   ]
 }

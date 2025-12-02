@@ -16,7 +16,12 @@ import requests
 
 from .tech_detector import TechDetector, TechDetectionResult
 from .tech_scorer import score_technologies, get_highest_value_tech, to_dict
-from .email_generator import generate_outreach_email, GeneratedEmail
+from .email_generator import (
+    generate_outreach_email, 
+    GeneratedEmail,
+    generate_outreach_email_with_persona,
+    DEFAULT_PERSONA,
+)
 from .email_extractor import crawl_for_emails
 
 
@@ -200,16 +205,19 @@ def scan_technologies(
     top_tech = scored[0] if scored else None
     top_tech_dict = to_dict(top_tech) if top_tech else None
 
-    # Generate email if requested
+    # Generate email if requested using persona-based generation
     email_dict = None
     if generate_email and detection_result.technologies:
-        email = generate_outreach_email(
-            domain,
-            detection_result.technologies,
-            consultant_profile,
+        # Use default persona (Scott) for pipeline-generated emails
+        # The actual persona will be selected when sending via outreach_worker
+        default_email = DEFAULT_PERSONA.get("email", "scott@closespark.co")
+        email_data = generate_outreach_email_with_persona(
+            domain=domain,
+            technologies=detection_result.technologies,
+            from_email=default_email,
         )
-        if email:
-            email_dict = email.to_dict()
+        if email_data:
+            email_dict = email_data
 
     return TechScanResult(
         domain=domain,

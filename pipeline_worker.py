@@ -432,6 +432,9 @@ def save_scan_result(supabase, result: dict, category: str) -> None:
         result: Scan result dictionary from scan_technologies
         category: The business category
     """
+    # Get generated_email data if available
+    generated_email = result.get("generated_email")
+    
     row = {
         "domain": result["domain"],
         "category": category,
@@ -439,6 +442,7 @@ def save_scan_result(supabase, result: dict, category: str) -> None:
         "scored_technologies": result.get("scored_technologies", []),
         "top_technology": result.get("top_technology"),
         "emails": result.get("emails", []),
+        "generated_email": generated_email,
         "error": result.get("error"),
     }
     supabase.table(SUPABASE_TABLE).insert(row).execute()

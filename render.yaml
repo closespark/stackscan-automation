@@ -1,9 +1,9 @@
-# Render deployment configuration for HubSpot Domain Pipeline
+# Render deployment configuration for Tech Stack Scanner Pipeline
 # Replace placeholder values with your own before deploying
 
 services:
   - type: worker
-    name: hubspot-domain-pipeline-worker
+    name: tech-scan-pipeline-worker
     env: docker
     plan: starter
     dockerfilePath: ./Dockerfile
@@ -15,7 +15,7 @@ services:
       - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: SUPABASE_TABLE
-        value: hubspot_scans
+        value: tech_scans
       - key: SUPABASE_DOMAIN_TABLE
         value: domains_seen
       - key: APIFY_TOKEN
@@ -42,24 +42,21 @@ services:
       - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: OUTREACH_TABLE
-        value: hubspot_scans
+        value: tech_scans
+      # SMTP_ACCOUNTS_JSON format: {"inboxes":[{"email":"...","smtp_host":"...","smtp_port":587,"smtp_user":"...","smtp_password":"..."}]}
       - key: SMTP_ACCOUNTS_JSON
         sync: false
       - key: OUTREACH_DAILY_LIMIT
         value: "500"
       - key: OUTREACH_PER_INBOX_LIMIT
         value: "50"
-      - key: OUTREACH_SUBJECT
-        value: "Quick question about your website"
-      - key: OUTREACH_EMAIL_TEMPLATE
-        value: templates/outreach_email.txt
       - key: SMTP_SEND_DELAY_SECONDS
         value: "4"
 
 cronJobs:
-  - name: daily-hubspot-domain-scan
+  - name: daily-tech-domain-scan
     schedule: "0 6 * * *"
-    service: hubspot-domain-pipeline-worker
+    service: tech-scan-pipeline-worker
     command: "python pipeline_worker.py"
 
   - name: daily-outreach-send

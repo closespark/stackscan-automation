@@ -1,10 +1,10 @@
-# Tech Stack Scanner
+# CloseSpark Tech Stack Scanner
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 
-Wappalyzer-style domain scanner that detects **40+ technologies** across business websites — including CRM systems, marketing automation, ecommerce platforms, payment processors, analytics tools, and more. Scores each technology by value and optionally generates personalized outreach emails. Built for consultants, revops teams, and lead generation workflows. See [Supported Technologies](#supported-technologies) for the full list.
+Wappalyzer-style domain scanner that detects **40+ technologies** across business websites — including CRM systems, marketing automation, ecommerce platforms, payment processors, analytics tools, and more. Scores each technology by value and generates **persona-based outreach emails** with variant tracking. Built for consultants, revops teams, and lead generation workflows.
 
 > **Note**: This project is in **beta** status. The core scanning functionality is stable and actively used in production for lead generation workflows.
 
@@ -12,7 +12,9 @@ Wappalyzer-style domain scanner that detects **40+ technologies** across busines
 
 - **Multi-Technology Detection**: Detects 40+ technologies including HubSpot, Salesforce, Shopify, Stripe, and more
 - **Technology Scoring**: Scores each technology 1-5 based on value and specialization
-- **Automated Email Generation**: Generates personalized outreach emails based on detected stack
+- **Persona-Based Email Generation**: Generates personalized outreach emails with distinct personas (Scott, Tracy, Willa)
+- **Multiple Email Variants**: 2-3 email variants per technology for A/B testing
+- **Variant Tracking**: Full metadata tracking for analytics (variant_id, persona, persona_email)
 - **Email Extraction**: Crawls sites to find non-generic business email addresses
 - **Generic Email Filtering**: Automatically excludes info@, support@, admin@, hello@, sales@, etc.
 - **JSON Output**: Structured output with technologies, scores, and generated emails
@@ -22,7 +24,7 @@ Wappalyzer-style domain scanner that detects **40+ technologies** across busines
 
 ```bash
 # Clone the repository
-git clone https://github.com/inevitablesale/stackscan-automation.git
+git clone https://github.com/closespark/stackscan-automation.git
 cd stackscan-automation
 
 # Install dependencies
@@ -48,28 +50,76 @@ tech-scanner -f domains.txt -o results.json
 
 # Skip email generation
 tech-scanner example.com --no-email
-
-# Custom consultant profile for emails
-tech-scanner example.com --name "Alex" --location "Austin, TX" --rate "\$100/hr"
 ```
 
 ### Python Library
 
 ```python
-from hubspot_scanner import scan_technologies, score_technologies, generate_outreach_email
+from hubspot_scanner import scan_technologies, generate_persona_outreach_email
 
 # Scan a domain for technologies
 result = scan_technologies("example.com")
 print(f"Technologies: {result.technologies}")
 print(f"Top tech: {result.top_technology['name']} (score: {result.top_technology['score']})")
 
-# The generated email is ready to use
-if result.generated_email:
-    print(f"Subject: {result.generated_email['subject_lines'][0]}")
-    print(f"Body: {result.generated_email['email_body']}")
+# Generate persona-based email
+email = generate_persona_outreach_email(
+    domain="example.com",
+    main_tech="Shopify",
+    supporting_techs=["Stripe", "Klaviyo"],
+    from_email="scott@closespark.co"
+)
+print(f"Subject: {email.subject}")
+print(f"Persona: {email.persona} ({email.persona_role})")
+print(f"Variant: {email.variant_id}")
+print(f"Body:\n{email.body}")
 ```
 
-### Technology Scoring
+## Persona System
+
+The outreach system uses three distinct personas tied to SMTP sender addresses:
+
+| Email | Persona | Role | Tone |
+|-------|---------|------|------|
+| `scott@closespark.co` | Scott | Systems Engineer | Concise, technical, straight to the point |
+| `tracy@closespark.co` | Tracy | Technical Project Lead | Structured, slightly more formal |
+| `willa@closespark.co` | Willa | Automation Specialist | Friendly but still professional |
+
+Each email includes:
+- **CloseSpark branding** with Richmond, VA location
+- **Hourly rate**: $85/hr
+- **Calendly link**: https://calendly.com/closespark/technical-systems-consultation
+- **GitHub link**: https://github.com/closespark/
+
+## Email Variants
+
+Each technology has 2-3 email variants for A/B testing:
+
+```python
+EMAIL_VARIANTS = {
+    "Shopify": [
+        {"id": "shopify_v1", "subject_template": "Shopify integration issue on {{domain}}?", ...},
+        {"id": "shopify_v2", "subject_template": "Quick Shopify improvement idea for {{domain}}", ...},
+        {"id": "shopify_v3", "subject_template": "Saw something in your Shopify setup", ...},
+    ],
+    "Salesforce": [...],
+    "WordPress": [...],
+    # ... 14 technologies with variants
+}
+```
+
+### Supported Technologies with Variants
+
+- Shopify, WooCommerce, Magento (Ecommerce)
+- Salesforce, HubSpot (CRM/Marketing)
+- WordPress (CMS)
+- Stripe (Payments)
+- Klaviyo, Mailchimp (Email Marketing)
+- Google Analytics, GA4, Mixpanel (Analytics)
+- Segment (CDP)
+- Intercom (Live Chat)
+
+## Technology Scoring
 
 Technologies are scored by value/specialization (1-5 scale):
 
@@ -81,56 +131,188 @@ Technologies are scored by value/specialization (1-5 scale):
 | 2 | Infrastructure | AWS, Vercel, Netlify, Cloudflare |
 | 1 | Basic Analytics | Google Analytics, GA4, Heap, Hotjar |
 
-### Email Generation Output
+## Email Generation Output
 
 ```json
 {
-  "domain": "example.com",
-  "technologies": ["Shopify", "Stripe", "Klaviyo", "Google Analytics"],
-  "scored_technologies": [
-    {"name": "Shopify", "score": 4, "category": "Ecommerce"},
-    {"name": "Stripe", "score": 4, "category": "Payment Processor"},
-    {"name": "Klaviyo", "score": 4, "category": "Email Marketing"},
-    {"name": "Google Analytics", "score": 1, "category": "Analytics"}
-  ],
-  "top_technology": {
-    "name": "Shopify",
-    "score": 4,
-    "category": "Ecommerce",
-    "recent_project": "rebuilt a Shopify checkout flow and fixed server-side tracking for Stripe + Klaviyo events."
-  },
-  "generated_email": {
-    "selected_technology": "Shopify",
-    "subject_lines": [
-      "Quick Shopify question",
-      "Your Shopify setup",
-      "Short-term Shopify help?"
-    ],
-    "email_body": "Hey there,\n\nI was looking at example.com and noticed you're using Shopify..."
-  }
+  "subject": "Shopify integration issue on sample-shop.com?",
+  "body": "Hi — I'm Scott from CloseSpark in Richmond, VA...",
+  "main_tech": "Shopify",
+  "supporting_techs": ["Stripe", "Klaviyo"],
+  "persona": "Scott",
+  "persona_email": "scott@closespark.co",
+  "persona_role": "Systems Engineer",
+  "variant_id": "shopify_v1",
+  "domain": "sample-shop.com"
 }
 ```
 
-### Supported Technologies
+### Example Generated Email
 
-**Marketing & Sales:**
-- CRM: Salesforce, Zoho, Pipedrive
-- Marketing Automation: HubSpot, Marketo, Pardot, ActiveCampaign
-- Email: Klaviyo, Mailchimp, SendGrid
-- Live Chat: Intercom, Drift, Zendesk Chat, Freshchat
+```
+Subject: Shopify integration issue on sample-shop.com?
 
-**Ecommerce:**
-- Platforms: Shopify, WooCommerce, Magento, BigCommerce
-- Payments: Stripe, PayPal, Braintree, Square
+Hi — I'm Scott from CloseSpark in Richmond, VA.
 
-**Analytics & Testing:**
-- Analytics: Google Analytics, Mixpanel, Amplitude, Heap, Hotjar
-- A/B Testing: Optimizely, VWO, Google Optimize
-- CDP: Segment
+I saw that sample-shop.com is running Shopify + Stripe, Klaviyo, and I specialize in short-term technical fixes for stacks like yours.
 
-**Infrastructure:**
-- CMS: WordPress, Webflow
-- Hosting: AWS, Vercel, Netlify, Cloudflare
+• Checkout or webhook issues affecting orders
+• Payment + analytics events not lining up (GA4, Klaviyo, etc.)
+• Small automation gaps that slow down the team
+
+Hourly: $85/hr, strictly short-term — no long-term commitment.
+
+If it would help to have a specialist jump in, you can grab time here:
+https://calendly.com/closespark/technical-systems-consultation
+
+– Scott
+Systems Engineer, CloseSpark
+https://github.com/closespark/
+```
+
+## Render Deployment
+
+This repository includes a complete Render deployment kit for running a fully automated daily pipeline.
+
+### Architecture
+
+The system consists of two workers running as daily cron jobs:
+
+1. **Pipeline Worker** (`pipeline_worker.py`) - Runs at 6:00 AM UTC
+   - Scrapes Google Places for one business category (rotates through 250 categories)
+   - Extracts and normalizes domains
+   - Deduplicates against Supabase history
+   - Scans each domain for technology stack
+   - Extracts non-generic contact emails
+   - Generates persona-based outreach emails with variant tracking
+   - Stores results in Supabase
+
+2. **Outreach Worker** (`outreach_worker.py`) - Runs at 2:00 PM UTC
+   - Pulls leads with detected technologies and valid emails
+   - Rotates through SMTP inboxes (each inbox = different persona)
+   - Generates persona-specific emails based on detected tech stack
+   - Sends personalized outreach emails (350-500/day)
+   - Marks leads as emailed in Supabase
+
+### SMTP Configuration
+
+The `SMTP_ACCOUNTS_JSON` environment variable must use this format:
+
+```json
+{
+  "inboxes": [
+    {
+      "email": "scott@closespark.co",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "scott@closespark.co",
+      "smtp_password": "your_app_password"
+    },
+    {
+      "email": "tracy@closespark.co",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "tracy@closespark.co",
+      "smtp_password": "your_app_password"
+    },
+    {
+      "email": "willa@closespark.co",
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "smtp_user": "willa@closespark.co",
+      "smtp_password": "your_app_password"
+    }
+  ]
+}
+```
+
+**Important**: The `email` field determines which persona sends the email. Use the exact email addresses shown above to match the persona map.
+
+### Supabase Setup
+
+Run the SQL schema in your Supabase SQL editor:
+
+```sql
+-- See config/supabase_schema.sql for full schema
+create table tech_scans (
+    id uuid primary key default gen_random_uuid(),
+    domain text not null,
+    technologies jsonb default '[]'::jsonb,
+    scored_technologies jsonb default '[]'::jsonb,
+    top_technology jsonb,
+    emails jsonb default '[]'::jsonb,
+    generated_email jsonb,  -- Contains persona, variant_id, subject, body
+    category text,
+    created_at timestamptz default now(),
+    error text,
+    emailed boolean,
+    emailed_at timestamptz
+);
+
+create table domains_seen (
+    domain text primary key,
+    category text,
+    first_seen timestamptz default now()
+);
+```
+
+### Environment Variables
+
+Set these in the Render dashboard:
+
+#### Required Variables
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key (secret) |
+| `APIFY_TOKEN` | Apify API token (secret) |
+| `SMTP_ACCOUNTS_JSON` | JSON object with "inboxes" array (secret) - see format above |
+
+#### Optional Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_LEVEL` | `INFO` | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
+| `APIFY_MAX_PLACES` | `1000` | Max places to crawl per Google Places search |
+| `APIFY_ACTOR` | `compass/crawler-google-places` | Apify actor ID |
+| `APIFY_POLL_INTERVAL` | `30` | Seconds between Apify run status polls |
+| `APIFY_RUN_TIMEOUT` | `3600` | Maximum seconds to wait for Apify run (1 hour) |
+| `SUPABASE_TABLE` | `tech_scans` | Table for scan results |
+| `SUPABASE_DOMAIN_TABLE` | `domains_seen` | Table for domain tracking |
+| `CATEGORIES_FILE` | `config/categories-250.json` | Path to categories JSON |
+| `SCANNER_MAX_EMAIL_PAGES` | `10` | Max pages to crawl for emails per domain |
+| `SCANNER_DISABLE_EMAILS` | `false` | Set to 'true' to skip email extraction |
+| `CATEGORY_OVERRIDE` | - | Override the daily category selection |
+| `OUTREACH_TABLE` | `tech_scans` | Table with leads |
+| `OUTREACH_DAILY_LIMIT` | `500` | Max emails per day |
+| `OUTREACH_PER_INBOX_LIMIT` | `50` | Max emails per SMTP inbox |
+| `SMTP_SEND_DELAY_SECONDS` | `4` | Delay between emails in seconds |
+
+### Deploy to Render
+
+1. Fork this repository
+2. Connect to Render
+3. Import `render.yaml` (Infrastructure as Code)
+4. Set secret environment variables in Render dashboard
+5. Deploy!
+
+### Local Development
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your credentials
+nano .env
+
+# Run pipeline worker
+python pipeline_worker.py
+
+# Run outreach worker
+python outreach_worker.py
+
+# Test SMTP sending
+python scripts/smtp_test_send.py
+```
 
 ## Email Filtering
 
@@ -156,8 +338,7 @@ python scripts/update_disposable_blocklist.py
 
 ```
 usage: tech-scanner [-h] [-f DOMAINS_FILE] [-o OUTPUT_FILE] [-t TIMEOUT]
-                    [--no-email] [--name NAME] [--location LOCATION]
-                    [--rate RATE] [-v]
+                    [--no-email] [-v]
                     [domains ...]
 
 Options:
@@ -166,9 +347,6 @@ Options:
   -o, --output          Output file for JSON results
   -t, --timeout         Request timeout in seconds (default: 10)
   --no-email            Skip outreach email generation
-  --name                Consultant name for email personalization
-  --location            Consultant location for email personalization
-  --rate                Consultant rate for email personalization
   -v, --version         Show version
 ```
 
@@ -181,59 +359,29 @@ See the `examples/` directory for more usage examples:
 - `category_scraper.py` - Scrape Google Places by business category using Apify
 - `daily_pipeline.py` - Full automated lead generation pipeline
 - `tech_scanner_usage.py` - Technology scanner with email generation examples
-- `zapmail_config.sample.json` - Sample Zapmail inbox configuration
 - `domains.txt` - Sample domain list
 - `sample_output.json` - Example output format
 
-## Daily Pipeline
+## Supported Technologies
 
-The `daily_pipeline.py` script implements an end-to-end automated pipeline that:
+**Marketing & Sales:**
+- CRM: Salesforce, Zoho, Pipedrive
+- Marketing Automation: HubSpot, Marketo, Pardot, ActiveCampaign
+- Email: Klaviyo, Mailchimp, SendGrid
+- Live Chat: Intercom, Drift, Zendesk Chat, Freshchat
 
-1. **Scrapes Google Places** - Uses Apify's Compass crawler to find businesses by category
-2. **Deduplicates domains** - Tracks processed domains to avoid rescanning
-3. **Scans for technologies** - Detects technology stack and extracts relevant signals
-4. **Extracts emails** - Crawls sites to find non-generic contact emails
-5. **Saves structured leads** - Outputs JSON records with all lead data
-6. **Sends outreach** - Optionally sends personalized emails through Zapmail pre-warmed inboxes
+**Ecommerce:**
+- Platforms: Shopify, WooCommerce, Magento, BigCommerce
+- Payments: Stripe, PayPal, Braintree, Square
 
-### Pipeline Usage
+**Analytics & Testing:**
+- Analytics: Google Analytics, Mixpanel, Amplitude, Heap, Hotjar
+- A/B Testing: Optimizely, VWO, Google Optimize
+- CDP: Segment
 
-```bash
-# Set required environment variables
-export APIFY_TOKEN="your_apify_token"
-
-# Run the daily pipeline (uses today's category based on day of year)
-python examples/daily_pipeline.py
-
-# Run with a specific category
-python examples/daily_pipeline.py --category "accountant"
-
-# Dry run to see what would be processed
-python examples/daily_pipeline.py --dry-run
-
-# Enable email sending
-export ZAPMAIL_CONFIG="path/to/zapmail_config.json"
-python examples/daily_pipeline.py --send-emails
-```
-
-### Zapmail Configuration
-
-To enable email sending, create a `zapmail_config.json` file (see `zapmail_config.sample.json`):
-
-```json
-{
-  "inboxes": [
-    {
-      "email": "sender@warmeddomain.com",
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587,
-      "smtp_user": "sender@warmeddomain.com",
-      "smtp_password": "your_app_password",
-      "daily_limit": 40
-    }
-  ]
-}
-```
+**Infrastructure:**
+- CMS: WordPress, Webflow
+- Hosting: AWS, Vercel, Netlify, Cloudflare
 
 ## Use Cases
 
@@ -243,151 +391,7 @@ To enable email sending, create a `zapmail_config.json` file (see `zapmail_confi
 - **Partnership Targeting**: Find companies using complementary technologies
 - **RevOps Workflows**: Automate technology-based lead qualification
 - **Automated Outreach**: Daily pipeline for discovering and contacting technology-matched prospects
-
-## Render Deployment
-
-This repository includes a complete Render deployment kit for running a fully automated daily pipeline.
-
-### Architecture
-
-The system consists of two workers running as daily cron jobs:
-
-1. **Pipeline Worker** (`pipeline_worker.py`) - Runs at 6:00 AM UTC
-   - Scrapes Google Places for one business category (rotates through 250 categories)
-   - Extracts and normalizes domains
-   - Deduplicates against Supabase history
-   - Scans each domain for technology stack
-   - Extracts non-generic contact emails
-   - Stores results in Supabase
-
-2. **Outreach Worker** (`outreach_worker.py`) - Runs at 2:00 PM UTC
-   - Pulls leads with detected technologies and valid emails
-   - Rotates through Zapmail pre-warmed SMTP inboxes
-   - Sends personalized outreach emails (350-500/day)
-   - Marks leads as emailed in Supabase
-
-### 📩 Automated Outreach Email (What the System Sends)
-
-When the outreach worker runs, it selects domains with detected technologies and valid non-generic contact emails, then sends a personalized outreach message through your Zapmail warmed inbox fleet.
-
-The outreach email is intentionally simple, friendly, and relevant to the technology signals the scanner found.
-
-**Default Outreach Template (`templates/outreach_email.txt`):**
-
-```
-Hey there!
-
-I was reviewing {{domain}} and noticed something interesting.
-
-We run a daily scanner that looks at HubSpot implementations across local businesses. If you're open to it, I can share what we found and some suggestions that usually improve leadflow + automations within days.
-
-Let me know if you'd like a quick breakdown.
-
-– Chris
-```
-
-**Personalization Logic:**
-
-- `{{domain}}` is inserted dynamically
-- Sender rotates across your Zapmail warm inbox pool
-- Limits are enforced per inbox (35–50/day)
-- Once emailed, the lead is marked with `emailed = true` in Supabase
-
-**Why this works:**
-
-The email references:
-
-- Detected technologies (confirmed by your scanner)
-- Specific findings (signals + tech details)
-- A clear value proposition
-- A real person (Chris) offering expertise
-
-This results in reply rates far above generic cold email because the email is tied directly to the scanner's findings.
-
-### Supabase Setup
-
-Run the SQL schema in your Supabase SQL editor:
-
-```sql
--- See config/supabase_schema.sql for full schema
-create table hubspot_scans (
-    id uuid primary key default gen_random_uuid(),
-    domain text not null,
-    hubspot_detected boolean default false,
-    confidence_score float default 0,
-    portal_ids jsonb default '[]'::jsonb,
-    hubspot_signals jsonb default '[]'::jsonb,
-    emails jsonb default '[]'::jsonb,
-    category text,
-    created_at timestamptz default now(),
-    error text,
-    emailed boolean,
-    emailed_at timestamptz
-);
-
-create table domains_seen (
-    domain text primary key,
-    category text,
-    first_seen timestamptz default now()
-);
-```
-
-### Environment Variables
-
-Set these in the Render dashboard:
-
-#### Required Variables
-| Variable | Description |
-|----------|-------------|
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key (secret) |
-| `APIFY_TOKEN` | Apify API token (secret) |
-| `SMTP_ACCOUNTS_JSON` | JSON array of SMTP inbox configs (secret) |
-
-#### Optional Variables
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LOG_LEVEL` | `INFO` | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
-| `APIFY_MAX_PLACES` | `1000` | Max places to crawl per Google Places search |
-| `APIFY_ACTOR` | `compass/crawler-google-places` | Apify actor ID |
-| `APIFY_POLL_INTERVAL` | `30` | Seconds between Apify run status polls |
-| `APIFY_RUN_TIMEOUT` | `3600` | Maximum seconds to wait for Apify run (1 hour) |
-| `SUPABASE_TABLE` | `hubspot_scans` | Table for scan results |
-| `SUPABASE_DOMAIN_TABLE` | `domains_seen` | Table for domain tracking |
-| `CATEGORIES_FILE` | `config/categories-250.json` | Path to categories JSON |
-| `SCANNER_MAX_EMAIL_PAGES` | `10` | Max pages to crawl for emails per domain |
-| `SCANNER_DISABLE_EMAILS` | `false` | Set to 'true' to skip email extraction |
-| `CATEGORY_OVERRIDE` | - | Override the daily category selection |
-| `OUTREACH_TABLE` | `hubspot_scans` | Table with leads |
-| `OUTREACH_DAILY_LIMIT` | `500` | Max emails per day |
-| `OUTREACH_PER_INBOX_LIMIT` | `50` | Max emails per SMTP inbox |
-| `OUTREACH_EMAIL_TEMPLATE` | `templates/outreach_email.txt` | Path to email template |
-| `OUTREACH_SUBJECT` | `Quick question about your website` | Email subject line |
-| `SMTP_SEND_DELAY_SECONDS` | `4` | Delay between emails in seconds |
-
-### Deploy to Render
-
-1. Fork this repository
-2. Connect to Render
-3. Import `render.yaml` (Infrastructure as Code)
-4. Set secret environment variables in Render dashboard
-5. Deploy!
-
-### Local Development
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your credentials
-nano .env
-
-# Run pipeline worker
-python pipeline_worker.py
-
-# Run outreach worker
-python outreach_worker.py
-```
+- **A/B Testing**: Track which email variants perform best with variant_id metadata
 
 ## Requirements
 

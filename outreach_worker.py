@@ -17,8 +17,6 @@ Optional Environment Variables:
     OUTREACH_TABLE: Table with leads (default: hubspot_scans)
     OUTREACH_DAILY_LIMIT: Max emails per day (default: 500)
     OUTREACH_PER_INBOX_LIMIT: Max emails per inbox (default: 50)
-    OUTREACH_EMAIL_TEMPLATE: Path to email template (default: templates/outreach_email.txt)
-    OUTREACH_SUBJECT: Email subject line
     SMTP_SEND_DELAY_SECONDS: Delay between emails (default: 4)
     LOG_LEVEL: Logging level (default: INFO)
 """
@@ -35,6 +33,12 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from supabase import create_client
+
+from hubspot_scanner.email_generator import (
+    generate_outreach_email_with_persona,
+    get_persona_for_email,
+    CLOSESPARK_PROFILE,
+)
 
 
 # ---------- LOGGING SETUP ----------
@@ -78,10 +82,6 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 OUTREACH_TABLE = os.getenv("OUTREACH_TABLE", "hubspot_scans")
 DAILY_LIMIT = int(os.getenv("OUTREACH_DAILY_LIMIT", "500"))
 PER_INBOX_LIMIT = int(os.getenv("OUTREACH_PER_INBOX_LIMIT", "50"))
-EMAIL_TEMPLATE_PATH = os.getenv(
-    "OUTREACH_EMAIL_TEMPLATE", "templates/outreach_email.txt"
-)
-EMAIL_SUBJECT = os.getenv("OUTREACH_SUBJECT", "Quick question about your website")
 
 SEND_DELAY = int(os.getenv("SMTP_SEND_DELAY_SECONDS", "4"))
 
@@ -96,8 +96,6 @@ def log_config():
     logger.info(f"  OUTREACH_TABLE: {OUTREACH_TABLE}")
     logger.info(f"  DAILY_LIMIT: {DAILY_LIMIT}")
     logger.info(f"  PER_INBOX_LIMIT: {PER_INBOX_LIMIT}")
-    logger.info(f"  EMAIL_TEMPLATE_PATH: {EMAIL_TEMPLATE_PATH}")
-    logger.info(f"  EMAIL_SUBJECT: {EMAIL_SUBJECT}")
     logger.info(f"  SEND_DELAY: {SEND_DELAY} seconds")
     logger.info(f"  SMTP_ACCOUNTS_JSON: {'[SET]' if os.getenv('SMTP_ACCOUNTS_JSON') else '[NOT SET]'}")
     logger.info("=" * 60)
@@ -120,6 +118,13 @@ def get_smtp_fleet() -> list[dict]:
     """
     Load SMTP accounts from environment variable.
 
+    Supports two formats:
+    1. New format with 'inboxes' key:
+       {"inboxes": [{"email": "...", "smtp_host": "...", "smtp_port": 587, 
+                     "smtp_user": "...", "smtp_password": "..."}]}
+    2. Legacy format (array directly):
+       [{"user": "...", "host": "...", "port": 587, "pass": "..."}]
+
     Note: For production deployments, use Render's secret environment variables
     or a dedicated secret management service to store SMTP credentials securely.
     Never log or expose the SMTP_ACCOUNTS_JSON value.
@@ -127,51 +132,53 @@ def get_smtp_fleet() -> list[dict]:
     logger.info("Loading SMTP accounts from environment...")
     smtp_json = os.getenv("SMTP_ACCOUNTS_JSON", "[]")
     try:
-        fleet = json.loads(smtp_json)
-        if not fleet:
-            logger.warning("No SMTP accounts configured in SMTP_ACCOUNTS_JSON")
+        data = json.loads(smtp_json)
+        
+        # Check if it's the new format with 'inboxes' key
+        if isinstance(data, dict) and "inboxes" in data:
+            raw_fleet = data["inboxes"]
         else:
-            # Log inbox count without exposing credentials
-            logger.info(f"Loaded {len(fleet)} SMTP accounts successfully")
-            for i, account in enumerate(fleet):
-                # Mask email for privacy
-                user = account.get("user", "unknown")
-                masked_user = user[:3] + "***" + user[user.find("@"):] if "@" in user else user[:3] + "***"
-                logger.debug(f"  Account {i+1}: {masked_user} @ {account.get('host', 'unknown')}:{account.get('port', 587)}")
+            # Legacy format - array directly
+            raw_fleet = data
+        
+        if not raw_fleet:
+            logger.warning("No SMTP accounts configured in SMTP_ACCOUNTS_JSON")
+            return []
+        
+        # Normalize to internal format
+        fleet = []
+        for account in raw_fleet:
+            # Handle new format keys
+            if "smtp_user" in account:
+                normalized = {
+                    "email": account.get("email", account.get("smtp_user")),
+                    "user": account.get("smtp_user"),
+                    "host": account.get("smtp_host", "smtp.gmail.com"),
+                    "port": account.get("smtp_port", 587),
+                    "pass": account.get("smtp_password"),
+                }
+            else:
+                # Legacy format
+                normalized = {
+                    "email": account.get("user"),
+                    "user": account.get("user"),
+                    "host": account.get("host", "smtp.gmail.com"),
+                    "port": account.get("port", 587),
+                    "pass": account.get("pass"),
+                }
+            fleet.append(normalized)
+        
+        # Log inbox count without exposing credentials
+        logger.info(f"Loaded {len(fleet)} SMTP accounts successfully")
+        for i, account in enumerate(fleet):
+            # Mask email for privacy
+            email = account.get("email", "unknown")
+            masked_email = email[:3] + "***" + email[email.find("@"):] if "@" in email else email[:3] + "***"
+            logger.debug(f"  Account {i+1}: {masked_email} @ {account.get('host', 'unknown')}:{account.get('port', 587)}")
         return fleet
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in SMTP_ACCOUNTS_JSON: {e}")
         return []
-
-
-# ========================
-# Load template
-# ========================
-
-
-def load_template() -> str:
-    """Load the email template from file."""
-    logger.info(f"Loading email template from: {EMAIL_TEMPLATE_PATH}")
-    try:
-        with open(EMAIL_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-            template = f.read()
-            logger.info(f"Email template loaded successfully ({len(template)} characters)")
-            return template
-    except FileNotFoundError:
-        logger.warning(f"Template file not found: {EMAIL_TEMPLATE_PATH}, using default template")
-        # Return a default template
-        default_template = """Hi,
-
-I noticed you're using HubSpot on {{domain}} and wanted to reach out.
-
-We help businesses like yours get more out of their HubSpot investment.
-
-Would you be open to a quick 15-minute call this week?
-
-Best regards
-"""
-        logger.info(f"Using default template ({len(default_template)} characters)")
-        return default_template
 
 
 # ========================
@@ -334,7 +341,6 @@ def run_outreach() -> dict[str, int]:
         logger.info(f"SMTP fleet ready: {len(smtp_fleet)} inboxes available")
         logger.info(f"Maximum capacity: {len(smtp_fleet) * PER_INBOX_LIMIT} emails (fleet × per-inbox limit)")
 
-        template = load_template()
         leads = fetch_leads(supabase)
 
         if not leads:
@@ -358,11 +364,14 @@ def run_outreach() -> dict[str, int]:
         for smtp_conf in smtp_fleet:
             sent_this_inbox = 0
             inbox_number += 1
-            inbox_email = smtp_conf.get("user", "unknown")
-            masked_inbox = inbox_email[:3] + "***" + inbox_email[inbox_email.find("@"):] if "@" in inbox_email else inbox_email[:3] + "***"
+            from_email = smtp_conf.get("email", smtp_conf.get("user", "unknown"))
+            masked_inbox = from_email[:3] + "***" + from_email[from_email.find("@"):] if "@" in from_email else from_email[:3] + "***"
             
+            # Get persona for this inbox
+            persona = get_persona_for_email(from_email)
             logger.info("-" * 60)
             logger.info(f"INBOX {inbox_number}/{len(smtp_fleet)}: {masked_inbox}")
+            logger.info(f"  Persona: {persona['name']} ({persona['role']})")
             logger.info(f"  Host: {smtp_conf.get('host', 'unknown')}:{smtp_conf.get('port', 587)}")
             logger.info(f"  Capacity: {PER_INBOX_LIMIT} emails")
 
@@ -389,22 +398,78 @@ def run_outreach() -> dict[str, int]:
                 recipient = email_list[0]
                 domain = lead.get("domain", "your website")
                 lead_id = lead.get("id")
+                
+                # Get technologies from the lead (for persona-based email generation)
+                # Try different possible field names for technologies
+                technologies = (
+                    lead.get("technologies") or 
+                    lead.get("scored_technologies") or 
+                    []
+                )
+                
+                # Extract tech names if they're dicts
+                if technologies and isinstance(technologies[0], dict):
+                    technologies = [t.get("name", str(t)) for t in technologies]
+                
+                # Get top_technology as main tech if available
+                top_tech = lead.get("top_technology")
+                main_tech = None
+                if top_tech:
+                    if isinstance(top_tech, dict):
+                        main_tech = top_tech.get("name")
+                    elif isinstance(top_tech, str):
+                        main_tech = top_tech
+                
+                # If no main_tech but we have technologies, use first one
+                if not main_tech and technologies:
+                    main_tech = technologies[0]
+                
+                # Generate persona-based email
+                email_data = None
+                if main_tech:
+                    email_data = generate_outreach_email_with_persona(
+                        domain=domain,
+                        technologies=technologies if technologies else [main_tech],
+                        from_email=from_email,
+                    )
+                
+                if email_data:
+                    subject = email_data["subject"]
+                    body = email_data["body"]
+                    variant_id = email_data.get("variant_id", "unknown")
+                else:
+                    # Fallback to simple email if no tech data
+                    subject = f"Quick question about {domain}"
+                    body = f"""Hi — I'm {persona['name']} from CloseSpark in {CLOSESPARK_PROFILE['location']}.
 
-                # Personalize the email
-                personalized_body = template.replace("{{domain}}", domain)
+I came across {domain} and wanted to reach out. I specialize in short-term technical fixes for web stacks — integration issues, automation gaps, and tracking problems.
+
+• Integration and sync issues between tools
+• Automation and workflow problems
+• Tracking and analytics gaps
+
+Hourly: {CLOSESPARK_PROFILE['hourly_rate']}, strictly short-term — no long-term commitment.
+
+If it would help to have a specialist jump in, you can grab time here:
+{CLOSESPARK_PROFILE['calendly']}
+
+– {persona['name']}
+{persona['role']}, CloseSpark
+{CLOSESPARK_PROFILE['github']}"""
+                    variant_id = "fallback"
 
                 try:
                     email_start_time = time.time()
                     success = send_email_smtp(
                         smtp_conf,
                         to_email=recipient,
-                        subject=EMAIL_SUBJECT,
-                        body=personalized_body,
+                        subject=subject,
+                        body=body,
                     )
                     email_elapsed = time.time() - email_start_time
 
                     if success:
-                        logger.info(f"  ✓ [{stats['sent']+1}] Sent to {recipient} (domain: {domain}) [{email_elapsed:.1f}s]")
+                        logger.info(f"  ✓ [{stats['sent']+1}] Sent to {recipient} (domain: {domain}, variant: {variant_id}) [{email_elapsed:.1f}s]")
                         mark_lead_emailed(supabase, lead_id)
                         stats["sent"] += 1
                         sent_this_inbox += 1
