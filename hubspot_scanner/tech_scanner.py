@@ -14,13 +14,13 @@ from typing import Any
 
 import requests
 
-
-logger = logging.getLogger(__name__)
-
 from .tech_detector import TechDetector, TechDetectionResult
 from .tech_scorer import score_technologies, get_highest_value_tech, to_dict
 from .email_generator import generate_outreach_email, GeneratedEmail
 from .email_extractor import crawl_for_emails
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_TIMEOUT = 10
@@ -181,12 +181,7 @@ def scan_technologies(
             scored_technologies=[],
         )
 
-    # Extract emails only when technologies are detected
-    # Uses crawl_for_emails which:
-    # - Crawls contact/about pages (not just homepage)
-    # - Filters out generic emails (info@, support@, etc.)
-    # - Filters out disposable/honeypot email domains
-    # - Deduplicates and normalizes to lowercase
+    # Extract emails (crawls multiple pages and filters out generic/disposable)
     logger.info(f"Email extractor: crawling {domain} for emails...")
     extracted_emails = sorted(crawl_for_emails(
         base_url=url,
