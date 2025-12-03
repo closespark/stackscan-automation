@@ -624,11 +624,11 @@ def run_technology_scans(supabase, domains: list[str], category: str) -> list[di
             if result.technologies:
                 tech_detected_count += 1
                 tech_count = len(result.technologies)
-                has_email = result.generated_email is not None
-                if has_email:
+                has_email_template = result.generated_email is not None
+                if has_email_template:
                     email_generated_count += 1
                 top_tech_name = result.top_technology.get("name", "N/A") if result.top_technology else "N/A"
-                logger.info(f"  ✓ {tech_count} technologies detected (top: {top_tech_name}, email: {'Yes' if has_email else 'No'}) [{domain_elapsed:.1f}s]")
+                logger.info(f"  ✓ {tech_count} technologies detected (top: {top_tech_name}, template: {'Yes' if has_email_template else 'No'}) [{domain_elapsed:.1f}s]")
                 if result.technologies[:5]:
                     logger.info(f"    Technologies: {', '.join(result.technologies[:5])}")
             else:
@@ -665,8 +665,9 @@ def run_technology_scans(supabase, domains: list[str], category: str) -> list[di
     logger.info(f"Technology scanning completed in {total_elapsed:.1f} seconds")
     logger.info(f"  Total domains scanned: {len(domains)}")
     logger.info(f"  Domains with technologies: {tech_detected_count}")
-    logger.info(f"  Emails generated: {email_generated_count}")
+    logger.info(f"  Email templates prepared: {email_generated_count}")
     logger.info(f"  Scan errors: {error_count}")
+    logger.info("  NOTE: Email templates are stored in Supabase. Actual sending is done by outreach_worker.py")
     
     return results
 
@@ -743,8 +744,11 @@ def main():
         logger.info(f"  Domains from Google Places: {len(domains)}")
         logger.info(f"  New domains scanned: {len(new_domains)}")
         logger.info(f"  Domains with technologies: {tech_count} ({tech_count/len(new_domains)*100:.1f}% detection rate)")
-        logger.info(f"  Emails generated: {email_count}")
+        logger.info(f"  Email templates prepared: {email_count}")
         logger.info(f"  Scan errors: {error_count}")
+        logger.info("=" * 60)
+        logger.info("NOTE: This pipeline prepares data only. Emails are NOT sent here.")
+        logger.info("      To send emails, run outreach_worker.py separately.")
         logger.info("=" * 60)
         logger.info("Pipeline worker finished successfully!")
         

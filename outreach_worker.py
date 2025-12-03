@@ -2,11 +2,14 @@
 """
 Outreach Worker for Automated Email Sending.
 
-This script sends personalized outreach emails to HubSpot-detected leads:
-1. Pulls leads from Supabase (hubspot_detected=true, has emails, not emailed)
+This script sends personalized outreach emails to leads from tech scans:
+1. Pulls leads from Supabase (has emails, has technologies, not emailed)
 2. Rotates through Zapmail pre-warmed SMTP inboxes
 3. Sends personalized emails with rate limiting
 4. Marks leads as emailed in Supabase
+
+Designed to run after pipeline_worker.py:
+    python pipeline_worker.py && python outreach_worker.py
 
 Environment Variables Required:
     SUPABASE_URL: Your Supabase project URL
@@ -14,7 +17,7 @@ Environment Variables Required:
     SMTP_ACCOUNTS_JSON: JSON array of SMTP inbox configurations
 
 Optional Environment Variables:
-    OUTREACH_TABLE: Table with leads (default: hubspot_scans)
+    OUTREACH_TABLE: Table with leads (default: tech_scans)
     OUTREACH_DAILY_LIMIT: Max emails per day (default: 500)
     OUTREACH_PER_INBOX_LIMIT: Max emails per inbox (default: 50)
     SMTP_SEND_DELAY_SECONDS: Delay between emails (default: 4)
@@ -79,7 +82,7 @@ logger = setup_logging()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-OUTREACH_TABLE = os.getenv("OUTREACH_TABLE", "hubspot_scans")
+OUTREACH_TABLE = os.getenv("OUTREACH_TABLE", "tech_scans")
 DAILY_LIMIT = int(os.getenv("OUTREACH_DAILY_LIMIT", "500"))
 PER_INBOX_LIMIT = int(os.getenv("OUTREACH_PER_INBOX_LIMIT", "50"))
 
@@ -189,8 +192,8 @@ def get_smtp_fleet() -> list[dict]:
 def fetch_leads(supabase) -> list[dict]:
     """
     Pull leads who:
-    - hubspot_detected = true
-    - emails not empty
+    - have emails (not empty)
+    - have technologies detected
     - not emailed yet
 
     Args:
@@ -203,32 +206,35 @@ def fetch_leads(supabase) -> list[dict]:
     logger.info("STEP: FETCHING LEADS FROM SUPABASE")
     logger.info("=" * 60)
     logger.info(f"Querying table: {OUTREACH_TABLE}")
-    logger.info("Filters: hubspot_detected=true, emailed=null")
     logger.info(f"Limit: {DAILY_LIMIT}")
     
     start_time = time.time()
+    
+    logger.info("Filters: emailed=null (with technologies and emails)")
     query = (
         supabase.table(OUTREACH_TABLE)
         .select("*")
-        .eq("hubspot_detected", True)
         .is_("emailed", "null")
         .limit(DAILY_LIMIT)
         .execute()
     )
+    
     elapsed = time.time() - start_time
     
     logger.info(f"Supabase query completed in {elapsed:.2f} seconds")
     logger.info(f"Total leads returned: {len(query.data or [])}")
 
-    # Filter to only leads with non-empty email arrays
+    # Filter to only leads with non-empty email arrays AND technologies
     leads = [
         lead for lead in (query.data or [])
-        if lead.get("emails")
+        if lead.get("emails") and lead.get("technologies")
     ]
     
-    leads_without_emails = len(query.data or []) - len(leads)
-    logger.info(f"Leads with emails: {len(leads)}")
+    leads_without_emails = sum(1 for lead in (query.data or []) if not lead.get("emails"))
+    leads_without_tech = sum(1 for lead in (query.data or []) if lead.get("emails") and not lead.get("technologies"))
+    logger.info(f"Leads ready for outreach: {len(leads)}")
     logger.info(f"Leads without emails (skipped): {leads_without_emails}")
+    logger.info(f"Leads without technologies (skipped): {leads_without_tech}")
     
     if leads:
         # Log sample leads (first 5)
