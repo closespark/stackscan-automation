@@ -393,6 +393,22 @@ Deploy to Render using the included `render.yaml` configuration.
 
 6. **Deploy!** The cron job runs daily at 6:00 AM UTC
 
+#### Docker Command Execution
+
+The Dockerfile is configured to run `daily_worker.py` by default, which executes all workers sequentially (pipeline → outreach → calendly). 
+
+**Important**: When running chained commands on Render (e.g., `python pipeline_worker.py && python outreach_worker.py`), always wrap them with `bash -c`:
+
+```bash
+# ✅ Correct - uses bash to interpret &&
+bash -c "python pipeline_worker.py && python outreach_worker.py"
+
+# ❌ Wrong - && may not be interpreted correctly
+python pipeline_worker.py && python outreach_worker.py
+```
+
+For most use cases, simply use `python daily_worker.py` which handles all workers properly.
+
 #### Local Development
 
 ```bash
