@@ -37,11 +37,11 @@ ProspectPilot is a fully automated cold email engine and lead generation system 
 **Includes:**
 
 - Everything in Package 1  
-- You deploy it to their Render account  
-- You configure their Supabase environment  
-- You set up all environment variables  
-- You run a test (scrape → enrich → outreach)  
-- You provide a one-time 10–15 min handoff video  
+- Close Spark deploys it to your Render account  
+- Close Spark configures your Supabase environment  
+- Close Spark sets up all environment variables  
+- Close Spark runs a test (scrape → enrich → outreach)  
+- Close Spark provides a one-time 10–15 min handoff video  
 
 **Does NOT include:**
 
