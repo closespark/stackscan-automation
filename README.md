@@ -1,42 +1,65 @@
-# Tech Stack Scanner
+# 🚀 ProspectPilot
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 
-**Automated lead generation pipeline for technical consultants and RevOps teams.**
+**Autonomous AI-Powered Outbound Engine for Technical Consultants, Agencies & RevOps Teams**
 
-Point this at any business category (dentists, accountants, e-commerce stores, etc.) and it will:
+ProspectPilot is a fully automated outbound pipeline that discovers new businesses, analyzes their website tech stack, extracts verified contact emails, generates personalized outreach, rotates SMTP inboxes, and tracks Calendly bookings — every single day, without human involvement.
+
+Point ProspectPilot at any business category (dentists, accountants, e-commerce stores, landscapers, professional services, etc.) and it will:
+
 1. **Scrape Google Places** for business websites in your target category
-2. **Scan each website's tech stack** — detecting 40+ technologies including CRMs (Salesforce, HubSpot), ecommerce platforms (Shopify, WooCommerce), payment processors (Stripe, PayPal), marketing automation (Klaviyo, Mailchimp), analytics tools (Mixpanel, Segment), and more
-3. **Score each technology** by value (1-5) to prioritize high-value leads
-4. **Extract contact emails** from the website (filtering out generic addresses like info@, support@)
-5. **Generate personalized outreach emails** based on their specific tech stack, using configurable personas and multiple email variants for A/B testing
-6. **Send emails automatically** through your SMTP inboxes with throttling and rotation
-7. **Track conversions** by syncing Calendly bookings back to your leads
+2. **Scan each website's tech stack** — detecting 40+ technologies (CRMs, CMSs, ecommerce platforms, analytics tools, marketing systems, payment processors, and more)
+3. **Score each detected technology** 1–5 based on value and specialization
+4. **Extract real business email addresses** (filtering out generic ones like info@, support@, admin@)
+5. **Generate personalized outreach emails** tailored to their tech stack
+6. **Use persona-based writing** with multiple variants for A/B testing
+7. **Send emails automatically** through rotating SMTP inboxes
+8. **Log all activity** to Supabase
+9. **Track meeting conversions** by syncing Calendly bookings
 
-The entire pipeline runs daily as a cron job. Configure it once, deploy to Render, and let it generate qualified technical leads while you sleep.
-
-> **Note**: This project is in **beta** status. The core scanning functionality is stable and actively used in production for lead generation workflows.
-
-## Features
-
-- **Multi-Technology Detection**: Detects 40+ technologies including HubSpot, Salesforce, Shopify, Stripe, and more
-- **Technology Scoring**: Scores each technology 1-5 based on value and specialization
-- **Persona-Based Email Generation**: Generates personalized outreach emails with configurable personas
-- **Multiple Email Variants**: 2-3 email variants per technology for A/B testing
-- **Variant Tracking**: Full metadata tracking for analytics (variant_id, persona, persona_email)
-- **Email Extraction**: Crawls sites to find non-generic business email addresses
-- **Generic Email Filtering**: Automatically excludes info@, support@, admin@, hello@, sales@, etc.
-- **JSON Output**: Structured output with technologies, scores, and generated emails
-- **CLI & Library**: Use as command-line tool or import as Python library
-- **Automated Pipeline**: Daily worker for Google Places scraping, tech scanning, and outreach
-- **Calendly Integration**: Track meeting bookings and conversion analytics
-- **Fully Configurable**: All company details, personas, and settings via environment variables
+You deploy ProspectPilot once, set your environment variables, and it runs daily as an autonomous cron job.
 
 ---
 
-## Table of Contents
+## 💸 Cost Advantage (Why ProspectPilot Is So Cheap to Run)
+
+One of the biggest strengths of ProspectPilot is how cost-efficient the entire pipeline is:
+
+| Service | Cost |
+|---------|------|
+| **Apify (Google Places data)** | $4 per 1,000 businesses — Even scraping 150 businesses per week costs under $1/month |
+| **Render hosting** | FREE — Runs daily cron jobs and background workers at zero cost |
+| **Calendly sync** | FREE — All meeting analytics pull from the free plan |
+| **OpenAI rewriting (optional)** | ~$1–$5/month — $5 in API credits powers 80–200 rewritten emails |
+| **Zapmail pre-warmed inboxes** | $33 total — Includes 1 domain, 3 fully pre-warmed mailboxes, SMTP credentials |
+
+With ProspectPilot's rotation engine, 3 inboxes can handle **2,700–3,600 outbound emails/month**.
+
+**Total monthly spend: $2–$6** (after initial $33 inbox purchase).
+
+This makes ProspectPilot one of the lowest-cost fully autonomous outbound systems available.
+
+---
+
+## ⭐ Features
+
+- **Multi-Technology Detection**: Detects 40+ technologies including HubSpot, Salesforce, Shopify, Stripe, WooCommerce, Klaviyo, Mailchimp, Segment, WordPress, Mixpanel, and more
+- **Technology Scoring**: Scores each detected technology from 1–5 based on enterprise demand & project value
+- **Persona-Driven AI Email Generation**: Emails are tailored to the detected technologies, your persona's tone & role, A/B test variants, and company details (name, hourly rate, location, Calendly)
+- **Multiple Variant Support**: Each technology offers 2–3 email variants for real A/B testing
+- **Email & Domain Extraction**: Crawler detects real business emails and automatically filters generic inboxes
+- **JSON Output**: All scans produce structured JSON with stack data, scores, emails, and variant metadata
+- **CLI + Python Library**: Run ProspectPilot via CLI or import it into your own Python automation workflows
+- **Automated Daily Pipeline**: Daily cron handles Google Places scrape, tech stack scan, email extraction, persona emails, outreach, and Calendly sync
+- **Calendly Integration**: Tracks which emails → which meetings → which personas → which variants → which tech stacks
+- **Fully Configurable**: All settings are environment-driven
+
+---
+
+## 📚 Table of Contents
 
 1. [Installation](#installation)
 2. [Quick Start](#quick-start)
@@ -55,65 +78,63 @@ The entire pipeline runs daily as a cron job. Configure it once, deploy to Rende
 8. [CLI Reference](#cli-reference)
 9. [Examples](#examples)
 10. [Supported Technologies](#supported-technologies)
+11. [Technology Scoring](#technology-scoring)
+12. [Requirements](#requirements)
+13. [License](#license)
 
 ---
 
-## Installation
+## 🛠 Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/closespark/stackscan-automation.git
-cd stackscan-automation
+git clone https://github.com/closespark/prospectpilot.git
+cd prospectpilot
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Install the package
 pip install -e .
 ```
 
-## Quick Start
+## ⚡ Quick Start
 
 ### Command Line
 
 ```bash
-# Scan a domain for all technologies
-tech-scanner example.com
+# Scan a domain
+prospectpilot scan example.com
 
 # Scan multiple domains
-tech-scanner shopify.com stripe.com
+prospectpilot scan shopify.com stripe.com
 
-# Save results with email generation
-tech-scanner -f domains.txt -o results.json
+# Save JSON output
+prospectpilot scan -f domains.txt -o results.json
 
 # Skip email generation
-tech-scanner example.com --no-email
+prospectpilot scan example.com --no-email
 ```
 
 ### Python Library
 
 ```python
-from stackscanner import scan_technologies, generate_persona_outreach_email
+from prospectpilot import scan_technologies, generate_persona_outreach_email
 
-# Scan a domain for technologies
 result = scan_technologies("example.com")
-print(f"Technologies: {result.technologies}")
-print(f"Top tech: {result.top_technology['name']} (score: {result.top_technology['score']})")
+print(result.technologies)
+print(result.top_technology["name"])
 
-# Generate persona-based email
 email = generate_persona_outreach_email(
     domain="example.com",
     main_tech="Shopify",
     supporting_techs=["Stripe", "Klaviyo"],
-    from_email="your-persona@yourdomain.com"
+    from_email="john@yourdomain.com"
 )
-print(f"Subject: {email.subject}")
-print(f"Body:\n{email.body}")
+
+print(email.subject)
+print(email.body)
 ```
 
 ---
 
-## Complete Setup Guide
+## 🔧 Complete Setup Guide
 
 This guide walks you through setting up all the external services needed to run the full automated pipeline.
 
@@ -514,7 +535,7 @@ python scripts/preview_email.py --tech Shopify --from john@yourdomain.com
 
 ---
 
-## Architecture
+## 🧠 Architecture
 
 The system runs as a daily cron job (`daily_worker.py`) executing three workers sequentially:
 
@@ -588,7 +609,7 @@ LIMIT 10;
 
 ---
 
-## Email Generation
+## 📝 Email Generation
 
 ### Email Variants
 
@@ -643,7 +664,7 @@ https://github.com/acmeconsulting/
 
 ---
 
-## Analytics & Tracking
+## 📊 Analytics & Tracking
 
 ### Per-Variant Analytics
 
@@ -669,14 +690,14 @@ The system avoids sending repetitive emails:
 
 ---
 
-## CLI Reference
+## 🔌 CLI Reference
 
-### tech-scanner
+### prospectpilot
 
 ```
-usage: tech-scanner [-h] [-f DOMAINS_FILE] [-o OUTPUT_FILE] [-t TIMEOUT]
-                    [--no-email] [-v]
-                    [domains ...]
+usage: prospectpilot [-h] [-f DOMAINS_FILE] [-o OUTPUT_FILE] [-t TIMEOUT]
+                     [--no-email] [-v]
+                     [domains ...]
 
 Options:
   domains               Domain(s) to scan
@@ -705,7 +726,7 @@ python scripts/preview_email.py --list
 
 ---
 
-## Examples
+## 📦 Examples
 
 See the `examples/` directory:
 
@@ -719,7 +740,7 @@ See the `examples/` directory:
 
 ---
 
-## Supported Technologies
+## 🔧 Supported Technologies
 
 ### Marketing & Sales
 - **CRM**: Salesforce, Zoho, Pipedrive
@@ -742,7 +763,7 @@ See the `examples/` directory:
 
 ---
 
-## Technology Scoring
+## 🧮 Technology Scoring
 
 Technologies are scored 1-5 based on value/specialization:
 
@@ -756,7 +777,7 @@ Technologies are scored 1-5 based on value/specialization:
 
 ---
 
-## Requirements
+## 📋 Requirements
 
 - Python 3.10+
 - requests
@@ -767,6 +788,6 @@ Technologies are scored 1-5 based on value/specialization:
 - python-dotenv
 - openai (optional, for email rewriting)
 
-## License
+## 📜 License
 
 MIT License
