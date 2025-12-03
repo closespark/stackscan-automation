@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from typing import Any
 
 
-# Technologies to skip when selecting the highest-value tech for outreach
+# Technologies to skip when selecting the highest-value tech for outreach.
 # These are detected but deprioritized in favor of other technologies
+# because Magento leads typically have lower conversion rates for outreach.
 TECH_BLACKLIST: set[str] = {"Magento"}
 
 
