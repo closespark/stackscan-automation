@@ -17,6 +17,7 @@ from .tech_scorer import (
     ScoredTechnology,
     TECH_SCORES,
     RECENT_PROJECTS,
+    TECH_BLACKLIST,
 )
 from .email_generator import (
     generate_outreach_email,
@@ -75,6 +76,7 @@ __all__ = [
     "ScoredTechnology",
     "TECH_SCORES",
     "RECENT_PROJECTS",
+    "TECH_BLACKLIST",
     # Email generation
     "generate_outreach_email",
     "generate_subject_lines",

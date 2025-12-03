@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from typing import Any
 
 
+# Technologies to skip when selecting the highest-value tech for outreach
+# These are detected but deprioritized in favor of other technologies
+TECH_BLACKLIST: set[str] = {"Magento"}
+
+
 # Technology value scores (higher = more valuable/specialized)
 TECH_SCORES = {
     # Enterprise / High-value (Score: 5)
@@ -160,16 +165,23 @@ def score_technologies(technologies: list[str]) -> list[ScoredTechnology]:
 
 def get_highest_value_tech(technologies: list[str]) -> ScoredTechnology | None:
     """
-    Get the highest-value technology from a list.
+    Get the highest-value technology from a list, skipping blacklisted ones.
+
+    If the highest-scoring technology is blacklisted, returns the next
+    highest-scoring non-blacklisted technology instead.
 
     Args:
         technologies: List of detected technology names
 
     Returns:
-        The highest-scoring technology, or None if list is empty
+        The highest-scoring non-blacklisted technology, or None if list is empty
+        or all technologies are blacklisted
     """
     scored = score_technologies(technologies)
-    return scored[0] if scored else None
+    for tech in scored:
+        if tech.name not in TECH_BLACKLIST:
+            return tech
+    return None
 
 
 def _get_category(tech_name: str) -> str:
